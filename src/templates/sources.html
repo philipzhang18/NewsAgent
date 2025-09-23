@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+
+{% block title %}新闻源管理 - News Agent{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-4">
+                <i class="fas fa-rss text-primary me-2"></i>
+                新闻源管理
+            </h1>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-globe fa-2x mb-2"></i>
+                    <div class="stats-number" id="totalSources">-</div>
+                    <div>总新闻源</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-check-circle fa-2x mb-2"></i>
+                    <div class="stats-number" id="activeSources">-</div>
+                    <div>活跃源</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-rss fa-2x mb-2"></i>
+                    <div class="stats-number" id="rssSources">-</div>
+                    <div>RSS源</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-cloud fa-2x mb-2"></i>
+                    <div class="stats-number" id="apiSources">-</div>
+                    <div>API源</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sources List -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list"></i>
+                        新闻源列表
+                    </h5>
+                    <div>
+                        <button class="btn btn-success btn-sm me-2" onclick="refreshSources()">
+                            <i class="fas fa-sync-alt"></i> 刷新
+                        </button>
+                        <button class="btn btn-primary btn-sm" onclick="addSource()">
+                            <i class="fas fa-plus"></i> 添加源
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="sourcesContent">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">加载新闻源中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Source Modal -->
+<div class="modal fade" id="editSourceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑新闻源</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSourceForm">
+                    <input type="hidden" id="editSourceId" value="">
+                    <div class="mb-3">
+                        <label for="editSourceName" class="form-label">源名称</label>
+                        <input type="text" class="form-control" id="editSourceName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editSourceType" class="form-label">源类型</label>
+                        <select class="form-select" id="editSourceType" required>
+                            <option value="">选择类型</option>
+                            <option value="RSS">RSS Feed</option>
+                            <option value="API">API</option>
+                            <option value="Social">社交媒体</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editSourceUrl" class="form-label">URL</label>
+                        <input type="url" class="form-control" id="editSourceUrl" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editSourceStatus" class="form-label">状态</label>
+                        <select class="form-select" id="editSourceStatus" required>
+                            <option value="active">活跃</option>
+                            <option value="inactive">停用</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editSourceDescription" class="form-label">描述</label>
+                        <textarea class="form-control" id="editSourceDescription" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="updateSource()">保存更改</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Source Modal -->
+<div class="modal fade" id="addSourceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加新闻源</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addSourceForm">
+                    <div class="mb-3">
+                        <label for="sourceName" class="form-label">源名称</label>
+                        <input type="text" class="form-control" id="sourceName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sourceType" class="form-label">源类型</label>
+                        <select class="form-select" id="sourceType" required>
+                            <option value="">选择类型</option>
+                            <option value="RSS">RSS Feed</option>
+                            <option value="API">API</option>
+                            <option value="Social">社交媒体</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sourceUrl" class="form-label">URL</label>
+                        <input type="url" class="form-control" id="sourceUrl" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sourceDescription" class="form-label">描述</label>
+                        <textarea class="form-control" id="sourceDescription" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveSource()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadSources();
+});
+
+async function loadSources() {
+    try {
+        const response = await fetch('/api/news/sources');
+        const data = await response.json();
+
+        if (data.success) {
+            const sources = data.data;
+            updateSourcesStats(sources);
+            displaySources(sources);
+        } else {
+            showError('加载新闻源失败: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error loading sources:', error);
+        showError('加载新闻源时发生错误: ' + error.message);
+    }
+}
+
+function updateSourcesStats(sources) {
+    const totalSources = sources.length;
+    const activeSources = sources.filter(s => s.status === 'active').length;
+    const rssSources = sources.filter(s => s.type === 'RSS').length;
+    const apiSources = sources.filter(s => s.type === 'API').length;
+
+    document.getElementById('totalSources').textContent = totalSources;
+    document.getElementById('activeSources').textContent = activeSources;
+    document.getElementById('rssSources').textContent = rssSources;
+    document.getElementById('apiSources').textContent = apiSources;
+}
+
+function displaySources(sources) {
+    const content = document.getElementById('sourcesContent');
+
+    if (sources.length === 0) {
+        content.innerHTML = '<p class="text-muted text-center">暂无配置的新闻源。</p>';
+        return;
+    }
+
+    let html = '<div class="table-responsive"><table class="table table-hover">';
+    html += `
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>类型</th>
+                <th>状态</th>
+                <th>文章数</th>
+                <th>最后更新</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+    `;
+
+    sources.forEach(source => {
+        const statusBadge = source.status === 'active'
+            ? '<span class="badge bg-success">活跃</span>'
+            : '<span class="badge bg-secondary">停用</span>';
+
+        const typeBadge = getTypeBadge(source.type);
+        const lastUpdated = source.last_updated
+            ? new Date(source.last_updated).toLocaleString()
+            : '从未';
+
+        html += `
+            <tr>
+                <td>
+                    <div>
+                        <strong>${source.name}</strong>
+                        <br>
+                        <small class="text-muted">${source.description || ''}</small>
+                    </div>
+                </td>
+                <td>${typeBadge}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <span class="badge bg-info">${source.articles_count}</span>
+                </td>
+                <td>
+                    <small>${lastUpdated}</small>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="editSource('${source.id}')" title="编辑">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-outline-success" onclick="testSource('${source.id}')" title="测试">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deleteSource('${source.id}')" title="删除">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += '</tbody></table></div>';
+    content.innerHTML = html;
+}
+
+function getTypeBadge(type) {
+    const badges = {
+        'RSS': '<span class="badge bg-warning">RSS</span>',
+        'API': '<span class="badge bg-primary">API</span>',
+        'Social': '<span class="badge bg-info">社交</span>'
+    };
+    return badges[type] || '<span class="badge bg-secondary">未知</span>';
+}
+
+function refreshSources() {
+    loadSources();
+}
+
+function addSource() {
+    document.getElementById('addSourceForm').reset();
+    $('#addSourceModal').modal('show');
+}
+
+async function saveSource() {
+    const name = document.getElementById('sourceName').value;
+    const type = document.getElementById('sourceType').value;
+    const url = document.getElementById('sourceUrl').value;
+    const description = document.getElementById('sourceDescription').value;
+
+    if (!name || !type || !url) {
+        alert('请填写必要字段');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/news/sources', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: name,
+                type: type,
+                url: url,
+                description: description
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('新闻源添加成功！');
+            $('#addSourceModal').modal('hide');
+            loadSources(); // 重新加载列表
+        } else {
+            alert('添加失败: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error adding source:', error);
+        alert('添加新闻源时发生错误: ' + error.message);
+    }
+}
+
+async function editSource(sourceId) {
+    try {
+        // 获取源详情
+        const response = await fetch(`/api/news/sources/${sourceId}`);
+        const data = await response.json();
+
+        if (data.success) {
+            const source = data.data;
+
+            // 填充编辑表单
+            document.getElementById('editSourceId').value = source.id;
+            document.getElementById('editSourceName').value = source.name;
+            document.getElementById('editSourceType').value = source.type;
+            document.getElementById('editSourceUrl').value = source.url;
+            document.getElementById('editSourceStatus').value = source.status;
+            document.getElementById('editSourceDescription').value = source.description || '';
+
+            // 显示编辑模态框
+            $('#editSourceModal').modal('show');
+        } else {
+            alert('获取源信息失败: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error loading source:', error);
+        alert('获取源信息时发生错误: ' + error.message);
+    }
+}
+
+async function updateSource() {
+    const sourceId = document.getElementById('editSourceId').value;
+    const name = document.getElementById('editSourceName').value;
+    const type = document.getElementById('editSourceType').value;
+    const url = document.getElementById('editSourceUrl').value;
+    const status = document.getElementById('editSourceStatus').value;
+    const description = document.getElementById('editSourceDescription').value;
+
+    if (!name || !type || !url) {
+        alert('请填写必要字段');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/news/sources/${sourceId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: name,
+                type: type,
+                url: url,
+                status: status,
+                description: description
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('新闻源更新成功！');
+            $('#editSourceModal').modal('hide');
+            loadSources(); // 重新加载列表
+        } else {
+            alert('更新失败: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error updating source:', error);
+        alert('更新新闻源时发生错误: ' + error.message);
+    }
+}
+
+function testSource(sourceId) {
+    alert('测试新闻源功能: ' + sourceId + ' (此功能将在后续版本中实现)');
+}
+
+async function deleteSource(sourceId) {
+    if (confirm('确定要删除这个新闻源吗？')) {
+        try {
+            const response = await fetch(`/api/news/sources/${sourceId}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('新闻源删除成功！');
+                loadSources(); // 重新加载列表
+            } else {
+                alert('删除失败: ' + data.error);
+            }
+        } catch (error) {
+            console.error('Error deleting source:', error);
+            alert('删除新闻源时发生错误: ' + error.message);
+        }
+    }
+}
+
+function showError(message) {
+    const content = document.getElementById('sourcesContent');
+    content.innerHTML = `
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-triangle"></i>
+            ${message}
+        </div>
+    `;
+}
+</script>
+
+<style>
+.stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+.stats-card .card-body {
+    padding: 1.5rem;
+}
+.stats-number {
+    font-size: 2rem;
+    font-weight: bold;
+}
+</style>
+{% endblock %}

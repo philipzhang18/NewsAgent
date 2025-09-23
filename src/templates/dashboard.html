@@ -1,0 +1,435 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - News Agent{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Statistics Cards -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-newspaper fa-2x mb-2"></i>
+                <div class="stats-number" id="totalArticles">-</div>
+                <div>Total Articles</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-rss fa-2x mb-2"></i>
+                <div class="stats-number" id="activeSources">-</div>
+                <div>Active Sources</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-clock fa-2x mb-2"></i>
+                <div class="stats-number" id="lastCollection">-</div>
+                <div>Last Collection</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-chart-line fa-2x mb-2"></i>
+                <div class="stats-number" id="successRate">-</div>
+                <div>Success Rate</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Service Status -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-server"></i> Service Status
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="serviceStatusContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading service status...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Activity -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-history"></i> Recent Activity
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="recentActivityContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading recent activity...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Sentiment Distribution -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-smile"></i> Sentiment Distribution
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="sentimentChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Source Distribution -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie"></i> Source Distribution
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="sourceChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Latest Articles -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-newspaper"></i> Latest Articles
+                </h5>
+                <a href="/articles" class="btn btn-primary btn-sm">
+                    View All Articles
+                </a>
+            </div>
+            <div class="card-body">
+                <div id="latestArticlesContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading latest articles...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let sentimentChart, sourceChart;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardData();
+    
+    // Refresh data every 30 seconds
+    setInterval(loadDashboardData, 30000);
+});
+
+async function loadDashboardData() {
+    try {
+        // Load service status
+        await loadServiceStatus();
+        
+        // Load statistics
+        await loadStatistics();
+        
+        // Load recent activity
+        await loadRecentActivity();
+        
+        // Load latest articles
+        await loadLatestArticles();
+        
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+    }
+}
+
+async function loadServiceStatus() {
+    try {
+        const response = await fetch('/api/news/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            const status = data.data;
+            const content = document.getElementById('serviceStatusContent');
+            
+            let statusHtml = `
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Service Running:</strong><br>
+                        <span class="badge ${status.service_running ? 'bg-success' : 'bg-danger'}">
+                            ${status.service_running ? 'Yes' : 'No'}
+                        </span>
+                    </div>
+                    <div class="col-6">
+                        <strong>Total Collectors:</strong><br>
+                        <span class="badge bg-primary">${status.total_collectors}</span>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Total Collections:</strong><br>
+                        <span class="badge bg-info">${status.collection_stats.total_collections}</span>
+                    </div>
+                    <div class="col-6">
+                        <strong>Total Articles:</strong><br>
+                        <span class="badge bg-success">${status.collection_stats.total_articles}</span>
+                    </div>
+                </div>
+            `;
+            
+            content.innerHTML = statusHtml;
+        }
+    } catch (error) {
+        console.error('Error loading service status:', error);
+    }
+}
+
+async function loadStatistics() {
+    try {
+        const response = await fetch('/api/news/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+            const stats = data.data;
+            
+            // Update statistics cards
+            document.getElementById('totalArticles').textContent = stats.collection_stats.total_articles;
+            document.getElementById('activeSources').textContent = stats.collection_stats.total_collections;
+            
+            if (stats.collection_stats.last_collection) {
+                const lastCollection = new Date(stats.collection_stats.last_collection);
+                document.getElementById('lastCollection').textContent = lastCollection.toLocaleTimeString();
+            }
+            
+            const successRate = stats.collection_stats.total_collections > 0 
+                ? Math.round((stats.collection_stats.successful_collections / stats.collection_stats.total_collections) * 100)
+                : 0;
+            document.getElementById('successRate').textContent = successRate + '%';
+            
+            // Create charts
+            createSentimentChart(stats.article_stats.sentiment_distribution);
+            createSourceChart(stats.article_stats.source_distribution);
+        }
+    } catch (error) {
+        console.error('Error loading statistics:', error);
+    }
+}
+
+async function loadRecentActivity() {
+    try {
+        const response = await fetch('/api/news/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            const status = data.data;
+            const content = document.getElementById('recentActivityContent');
+            
+            let activityHtml = '<div class="list-group list-group-flush">';
+            
+            // Show recent collector activities
+            for (const [collectorId, collector] of Object.entries(status.collectors)) {
+                const lastCollection = collector.last_collection 
+                    ? new Date(collector.last_collection).toLocaleString()
+                    : 'Never';
+                
+                const statusBadge = collector.is_running 
+                    ? '<span class="badge bg-success">Running</span>'
+                    : '<span class="badge bg-secondary">Idle</span>';
+                
+                activityHtml += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${collector.source_name}</strong><br>
+                            <small class="text-muted">Last: ${lastCollection}</small>
+                        </div>
+                        ${statusBadge}
+                    </div>
+                `;
+            }
+            
+            activityHtml += '</div>';
+            content.innerHTML = activityHtml;
+        }
+    } catch (error) {
+        console.error('Error loading recent activity:', error);
+    }
+}
+
+async function loadLatestArticles() {
+    try {
+        const response = await fetch('/api/news/articles?limit=5');
+        const data = await response.json();
+        
+        if (data.success) {
+            const articles = data.data.articles;
+            const content = document.getElementById('latestArticlesContent');
+            
+            if (articles.length === 0) {
+                content.innerHTML = '<p class="text-muted text-center">No articles available yet.</p>';
+                return;
+            }
+            
+            let articlesHtml = '<div class="row">';
+            
+            articles.forEach(article => {
+                const sentimentClass = article.sentiment ? `sentiment-${article.sentiment}` : '';
+                const sentimentIcon = getSentimentIcon(article.sentiment);
+                
+                articlesHtml += `
+                    <div class="col-md-6 mb-3">
+                        <div class="card article-card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">${article.title}</h6>
+                                <p class="card-text small text-muted">
+                                    ${article.summary || article.content.substring(0, 100)}...
+                                </p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">
+                                        <i class="fas fa-rss"></i> ${article.source_name}
+                                    </small>
+                                    <span class="${sentimentClass}">${sentimentIcon}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            articlesHtml += '</div>';
+            content.innerHTML = articlesHtml;
+        }
+    } catch (error) {
+        console.error('Error loading latest articles:', error);
+    }
+}
+
+function createSentimentChart(sentimentData) {
+    const ctx = document.getElementById('sentimentChart').getContext('2d');
+    
+    if (sentimentChart) {
+        sentimentChart.destroy();
+    }
+    
+    const labels = Object.keys(sentimentData);
+    const data = Object.values(sentimentData);
+    const colors = ['#28a745', '#dc3545', '#6c757d', '#ffc107'];
+    
+    sentimentChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+function createSourceChart(sourceData) {
+    const ctx = document.getElementById('sourceChart').getContext('2d');
+    
+    if (sourceChart) {
+        sourceChart.destroy();
+    }
+    
+    const labels = Object.keys(sourceData);
+    const data = Object.values(sourceData);
+    
+    sourceChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Articles',
+                data: data,
+                backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                borderColor: 'rgba(102, 126, 234, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+function getSentimentIcon(sentiment) {
+    if (!sentiment) return '<i class="fas fa-minus"></i>';
+    
+    const icons = {
+        'positive': '<i class="fas fa-smile"></i>',
+        'negative': '<i class="fas fa-frown"></i>',
+        'neutral': '<i class="fas fa-meh"></i>',
+        'mixed': '<i class="fas fa-surprise"></i>'
+    };
+    
+    return icons[sentiment] || '<i class="fas fa-minus"></i>';
+}
+</script>
+{% endblock %}
+
+
+
+
+
+

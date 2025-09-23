@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+
+# Virtual env
+venv/
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+news_agent.log
+logs/
+
+# Node (if any later)
+node_modules/
+
+# IDE
+.vscode/
+.idea/

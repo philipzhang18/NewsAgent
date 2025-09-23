@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}News Agent - 智能新闻代理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-newspaper text-primary me-2"></i>
+                    智能新闻代理
+                </h1>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-primary" onclick="initializeService()">
+                        <i class="fas fa-play me-1"></i>初始化服务
+                    </button>
+                    <button type="button" class="btn btn-outline-success" onclick="startService()">
+                        <i class="fas fa-play-circle me-1"></i>启动服务
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" onclick="stopService()">
+                        <i class="fas fa-stop me-1"></i>停止服务
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 欢迎卡片 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center py-5">
+                    <div class="mb-4">
+                        <i class="fas fa-robot fa-4x text-primary mb-3"></i>
+                        <h2 class="card-title">欢迎使用智能新闻代理</h2>
+                        <p class="card-text text-muted lead">
+                            一个基于AI的智能新闻收集、分析和处理系统
+                        </p>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <div class="text-center">
+                                <i class="fas fa-rss fa-2x text-info mb-2"></i>
+                                <h5>RSS收集</h5>
+                                <p class="text-muted small">自动收集RSS源新闻</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="text-center">
+                                <i class="fas fa-brain fa-2x text-success mb-2"></i>
+                                <h5>AI分析</h5>
+                                <p class="text-muted small">智能情感和偏见分析</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="text-center">
+                                <i class="fas fa-chart-line fa-2x text-warning mb-2"></i>
+                                <h5>数据可视化</h5>
+                                <p class="text-muted small">直观的统计图表展示</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="text-center">
+                                <i class="fas fa-search fa-2x text-danger mb-2"></i>
+                                <h5>智能搜索</h5>
+                                <p class="text-muted small">强大的内容搜索功能</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 快速操作 -->
+    <div class="row mb-4">
+        <div class="col-md-6 mb-3">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-tachometer-alt text-primary me-2"></i>
+                        仪表板
+                    </h5>
+                    <p class="card-text">查看系统状态、统计信息和实时数据</p>
+                    <a href="/dashboard" class="btn btn-primary">
+                        <i class="fas fa-arrow-right me-1"></i>进入仪表板
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-newspaper text-success me-2"></i>
+                        新闻文章
+                    </h5>
+                    <p class="card-text">浏览和管理收集到的新闻文章</p>
+                    <a href="/articles" class="btn btn-success">
+                        <i class="fas fa-arrow-right me-1"></i>查看文章
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统状态 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle text-info me-2"></i>
+                        系统状态
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-circle text-success fa-lg"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="mb-0">服务状态</h6>
+                                    <small class="text-muted">运行中</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-database text-primary fa-lg"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="mb-0">数据库</h6>
+                                    <small class="text-muted">已连接</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-clock text-warning fa-lg"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="mb-0">最后更新</h6>
+                                    <small class="text-muted">刚刚</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-cog text-info fa-lg"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="mb-0">配置状态</h6>
+                                    <small class="text-muted">已配置</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function initializeService() {
+    try {
+        const response = await fetch('/api/init', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            showAlert('服务初始化成功！', 'success');
+        } else {
+            showAlert('服务初始化失败：' + data.error, 'danger');
+        }
+    } catch (error) {
+        showAlert('请求失败：' + error.message, 'danger');
+    }
+}
+
+async function startService() {
+    try {
+        const response = await fetch('/api/start', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            showAlert('服务启动成功！', 'success');
+        } else {
+            showAlert('服务启动失败：' + data.error, 'danger');
+        }
+    } catch (error) {
+        showAlert('请求失败：' + error.message, 'danger');
+    }
+}
+
+async function stopService() {
+    try {
+        const response = await fetch('/api/stop', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            showAlert('服务停止成功！', 'success');
+        } else {
+            showAlert('服务停止失败：' + data.error, 'danger');
+        }
+    } catch (error) {
+        showAlert('请求失败：' + error.message, 'danger');
+    }
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}
+
+
+
+
+
+
