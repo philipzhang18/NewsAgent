@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试源功能</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>测试源功能</h1>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>测试 Twitter/X 源</h5>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-outline-success" onclick="testSource('twitter_x')" title="测试">
+                            <i class="fas fa-play"></i> 测试 Twitter/X
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>测试 NewsAPI 源</h5>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-outline-success" onclick="testSource('newsapi')" title="测试">
+                            <i class="fas fa-play"></i> 测试 NewsAPI
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Results Area -->
+        <div id="testResults" class="mt-4"></div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+function testSource(sourceId) {
+    const button = event.target.closest('button');
+    const originalHtml = button.innerHTML;
+
+    // Show loading state
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 测试中...';
+    button.disabled = true;
+
+    console.log('Testing source:', sourceId);
+
+    fetch(`http://localhost:5000/api/news/sources/${sourceId}/test`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Test response:', data);
+
+        if (data.success) {
+            let detailsHtml = '';
+            if (data.details) {
+                detailsHtml = '<ul class="list-unstyled mt-2">';
+                if (data.details.response_time) {
+                    detailsHtml += `<li><strong>响应时间:</strong> ${data.details.response_time}</li>`;
+                }
+                if (data.details.status_code) {
+                    detailsHtml += `<li><strong>状态码:</strong> ${data.details.status_code}</li>`;
+                }
+                if (data.details.available_articles) {
+                    detailsHtml += `<li><strong>可用文章:</strong> ${data.details.available_articles}</li>`;
+                }
+                if (data.details.articles_found) {
+                    detailsHtml += `<li><strong>发现文章:</strong> ${data.details.articles_found}</li>`;
+                }
+                if (data.details.rate_limit_remaining) {
+                    detailsHtml += `<li><strong>剩余请求:</strong> ${data.details.rate_limit_remaining}</li>`;
+                }
+                if (data.details.api_status) {
+                    detailsHtml += `<li><strong>API状态:</strong> ${data.details.api_status}</li>`;
+                }
+                if (data.details.tweets_accessible !== undefined) {
+                    detailsHtml += `<li><strong>推文可访问:</strong> ${data.details.tweets_accessible ? '是' : '否'}</li>`;
+                }
+                if (data.details.feed_valid !== undefined) {
+                    detailsHtml += `<li><strong>源有效:</strong> ${data.details.feed_valid ? '是' : '否'}</li>`;
+                }
+                detailsHtml += '</ul>';
+            }
+
+            showTestResult('✅ ' + data.message + detailsHtml, 'success');
+        } else {
+            showTestResult('❌ 测试失败: ' + (data.message || data.error), 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Test error:', error);
+        showTestResult('❌ 测试请求失败: ' + error.message, 'danger');
+    })
+    .finally(() => {
+        // Restore button state
+        console.log('Restoring button state');
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+    });
+}
+
+function showTestResult(message, type) {
+    const resultsDiv = document.getElementById('testResults');
+
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        <strong><i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i> 测试结果</strong><br>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+
+    // Clear previous results and add new one
+    resultsDiv.innerHTML = '';
+    resultsDiv.appendChild(alertDiv);
+
+    // Auto-remove after 15 seconds
+    setTimeout(() => {
+        if (alertDiv && alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 15000);
+}
+    </script>
+</body>
+</html>

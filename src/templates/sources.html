@@ -241,7 +241,7 @@ function displaySources(sources) {
 
         const typeBadge = getTypeBadge(source.type);
         const lastUpdated = source.last_updated
-            ? new Date(source.last_updated).toLocaleString()
+            ? new Date(source.last_updated).toLocaleDateString()
             : '从未';
 
         html += `
@@ -412,7 +412,167 @@ async function updateSource() {
 }
 
 function testSource(sourceId) {
-    alert('测试新闻源功能: ' + sourceId + ' (此功能将在后续版本中实现)');
+    // Find the test button for this specific source
+    const button = event ? event.target.closest('button') : document.querySelector(`button[onclick="testSource('${sourceId}')"]`);
+
+    if (!button) {
+        console.error('Unable to find test button for source:', sourceId);
+        alert('无法找到测试按钮');
+        return;
+    }
+
+    const originalHtml = button.innerHTML;
+
+    // Show loading state
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    button.disabled = true;
+
+    console.log('Testing source:', sourceId);
+
+    fetch(`/api/news/sources/${sourceId}/test`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Test response:', data);
+
+        if (data.success) {
+            let detailsHtml = '';
+            if (data.details) {
+                detailsHtml = '<br><small class="text-muted">';
+                if (data.details.response_time) {
+                    detailsHtml += `响应时间: ${data.details.response_time}`;
+                }
+                if (data.details.status_code) {
+                    detailsHtml += ` | 状态: ${data.details.status_code}`;
+                }
+                if (data.details.available_articles) {
+                    detailsHtml += ` | 可用文章: ${data.details.available_articles}`;
+                }
+                if (data.details.articles_found) {
+                    detailsHtml += ` | 发现文章: ${data.details.articles_found}`;
+                }
+                if (data.details.rate_limit_remaining) {
+                    detailsHtml += ` | 剩余请求: ${data.details.rate_limit_remaining}`;
+                }
+                if (data.details.api_status) {
+                    detailsHtml += ` | API状态: ${data.details.api_status}`;
+                }
+                if (data.details.tweets_accessible !== undefined) {
+                    detailsHtml += ` | 推文可访问: ${data.details.tweets_accessible ? '是' : '否'}`;
+                }
+                if (data.details.feed_valid !== undefined) {
+                    detailsHtml += ` | 源有效: ${data.details.feed_valid ? '是' : '否'}`;
+                }
+                detailsHtml += '</small>';
+            }
+
+            const message = '✅ ' + data.message + detailsHtml;
+            console.log('Showing success result:', message);
+
+            // Try both alert methods for maximum compatibility
+            try {
+                showTestResult(message, 'success');
+            } catch (e) {
+                console.error('showTestResult failed:', e);
+                alert('测试成功: ' + data.message);
+            }
+        } else {
+            const message = '❌ 测试失败: ' + (data.message || data.error);
+            console.log('Showing error result:', message);
+
+            try {
+                showTestResult(message, 'danger');
+            } catch (e) {
+                console.error('showTestResult failed:', e);
+                alert(message);
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Test error:', error);
+        const message = '❌ 测试请求失败: ' + error.message;
+
+        try {
+            showTestResult(message, 'danger');
+        } catch (e) {
+            console.error('showTestResult failed:', e);
+            alert(message);
+        }
+    })
+    .finally(() => {
+        // Restore button state
+        console.log('Restoring button state');
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+    });
+}
+
+function showTestResult(message, type) {
+    // Remove existing test result if any
+    const existingAlert = document.querySelector('.test-result-alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+
+    // Create new alert with better visibility
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show test-result-alert mt-3`;
+    alertDiv.style.position = 'relative';
+    alertDiv.style.zIndex = '1050';
+    alertDiv.innerHTML = `
+        <strong><i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i> 测试结果</strong><br>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+
+    // Try multiple insertion strategies
+    const sourcesContent = document.getElementById('sourcesContent');
+    if (sourcesContent) {
+        const sourcesCard = sourcesContent.closest('.card');
+        if (sourcesCard && sourcesCard.parentNode) {
+            sourcesCard.parentNode.insertBefore(alertDiv, sourcesCard.nextSibling);
+        } else {
+            // Fallback: insert at the top of the page
+            const container = document.querySelector('.container-fluid');
+            if (container) {
+                container.insertBefore(alertDiv, container.firstChild);
+            } else {
+                // Last resort: use alert
+                alert('测试结果: ' + message.replace(/<[^>]*>/g, ''));
+                return;
+            }
+        }
+    } else {
+        // Fallback: insert at the top of the page
+        const container = document.querySelector('.container-fluid');
+        if (container) {
+            container.insertBefore(alertDiv, container.firstChild);
+        } else {
+            // Last resort: use alert
+            alert('测试结果: ' + message.replace(/<[^>]*>/g, ''));
+            return;
+        }
+    }
+
+    // Scroll to the alert
+    alertDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Auto-remove after 10 seconds
+    setTimeout(() => {
+        if (alertDiv && alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 10000);
 }
 
 async function deleteSource(sourceId) {

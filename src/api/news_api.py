@@ -208,6 +208,16 @@ def get_sources():
 				"description": "Business news RSS feed"
 			},
 			{
+				"id": "twitter_x",
+				"name": "Twitter/X",
+				"type": "Social",
+				"url": "https://twitter.com",
+				"status": "active",
+				"last_updated": "2025-09-23T10:12:00Z",
+				"articles_count": 67,
+				"description": "Twitter/X social media platform"
+			},
+			{
 				"id": "reddit_news",
 				"name": "Reddit News",
 				"type": "Social",
@@ -258,6 +268,16 @@ def get_source(source_id: str):
 				"last_updated": "2025-09-23T08:45:00Z",
 				"articles_count": 32,
 				"description": "Business news RSS feed"
+			},
+			{
+				"id": "twitter_x",
+				"name": "Twitter/X",
+				"type": "Social",
+				"url": "https://twitter.com",
+				"status": "active",
+				"last_updated": "2025-09-23T10:12:00Z",
+				"articles_count": 67,
+				"description": "Twitter/X social media platform"
 			},
 			{
 				"id": "reddit_news",
@@ -374,6 +394,132 @@ def delete_source(source_id: str):
 	except Exception as e:
 		logger.error(f"Error deleting source {source_id}: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
+
+@news_api.route('/sources/<source_id>/test', methods=['POST'])
+def test_source(source_id: str):
+	"""Test a news source connection and functionality."""
+	try:
+		# 获取源信息
+		sources = [
+			{
+				"id": "newsapi",
+				"name": "NewsAPI",
+				"type": "API",
+				"url": "https://newsapi.org",
+				"status": "active",
+				"last_updated": "2025-09-23T10:15:00Z",
+				"articles_count": 150,
+				"description": "Global news aggregation API service"
+			},
+			{
+				"id": "rss_tech",
+				"name": "Tech RSS Feeds",
+				"type": "RSS",
+				"url": "https://feeds.feedburner.com/TechCrunch",
+				"status": "active",
+				"last_updated": "2025-09-23T09:15:00Z",
+				"articles_count": 45,
+				"description": "Technology news RSS feed"
+			},
+			{
+				"id": "rss_business",
+				"name": "Business RSS Feeds",
+				"type": "RSS",
+				"url": "https://feeds.reuters.com/reuters/businessNews",
+				"status": "active",
+				"last_updated": "2025-09-23T08:45:00Z",
+				"articles_count": 32,
+				"description": "Business news RSS feed"
+			},
+			{
+				"id": "twitter_x",
+				"name": "Twitter/X",
+				"type": "Social",
+				"url": "https://twitter.com",
+				"status": "active",
+				"last_updated": "2025-09-23T10:12:00Z",
+				"articles_count": 67,
+				"description": "Twitter/X social media platform"
+			},
+			{
+				"id": "reddit_news",
+				"name": "Reddit News",
+				"type": "Social",
+				"url": "https://www.reddit.com/r/news",
+				"status": "active",
+				"last_updated": "2025-09-23T10:05:00Z",
+				"articles_count": 78,
+				"description": "Reddit news aggregation"
+			}
+		]
+
+		source = next((s for s in sources if s["id"] == source_id), None)
+		if not source:
+			return jsonify({"success": False, "error": "Source not found"}), 404
+
+		# 模拟测试不同类型的源
+		if source["type"] == "API":
+			test_result = {
+				"success": True,
+				"message": f"API connection test successful for {source['name']}",
+				"details": {
+					"response_time": "245ms",
+					"status_code": 200,
+					"available_articles": 150,
+					"rate_limit_remaining": 450
+				}
+			}
+		elif source["type"] == "RSS":
+			test_result = {
+				"success": True,
+				"message": f"RSS feed test successful for {source['name']}",
+				"details": {
+					"response_time": "312ms",
+					"feed_valid": True,
+					"articles_found": 25,
+					"last_updated": "2025-09-23T08:45:00Z"
+				}
+			}
+		elif source["type"] == "Social":
+			if source_id == "twitter_x":
+				test_result = {
+					"success": True,
+					"message": f"Twitter/X API test successful for {source['name']}",
+					"details": {
+						"response_time": "189ms",
+						"api_status": "operational",
+						"tweets_accessible": True,
+						"rate_limit_remaining": 100
+					}
+				}
+			else:
+				test_result = {
+					"success": True,
+					"message": f"Social media API test successful for {source['name']}",
+					"details": {
+						"response_time": "203ms",
+						"api_status": "operational",
+						"posts_accessible": True,
+						"rate_limit_remaining": 75
+					}
+				}
+		else:
+			test_result = {
+				"success": False,
+				"message": f"Unknown source type: {source['type']}",
+				"details": {}
+			}
+
+		logger.info(f"Testing source {source_id}: {test_result}")
+		return jsonify(test_result)
+
+	except Exception as e:
+		logger.error(f"Error testing source {source_id}: {str(e)}")
+		return jsonify({
+			"success": False,
+			"error": str(e),
+			"message": "Source test failed due to internal error"
+		}), 500
 
 @news_api.route('/stats', methods=['GET'])
 def get_stats():

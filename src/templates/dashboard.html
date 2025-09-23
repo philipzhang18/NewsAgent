@@ -235,7 +235,7 @@ async function loadStatistics() {
             
             if (stats.collection_stats.last_collection) {
                 const lastCollection = new Date(stats.collection_stats.last_collection);
-                document.getElementById('lastCollection').textContent = lastCollection.toLocaleTimeString();
+                document.getElementById('lastCollection').textContent = lastCollection.toLocaleDateString();
             }
             
             const successRate = stats.collection_stats.total_collections > 0 
@@ -265,8 +265,8 @@ async function loadRecentActivity() {
             
             // Show recent collector activities
             for (const [collectorId, collector] of Object.entries(status.collectors)) {
-                const lastCollection = collector.last_collection 
-                    ? new Date(collector.last_collection).toLocaleString()
+                const lastCollection = collector.last_collection
+                    ? new Date(collector.last_collection).toLocaleDateString()
                     : 'Never';
                 
                 const statusBadge = collector.is_running 
