@@ -33,3 +33,6 @@ Thumbs.db
 news_agent.log
 data/
 temp/
+
+# Claude Code settings
+.claude/
