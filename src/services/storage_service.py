@@ -11,6 +11,7 @@ import time
 
 from ..models.news_models import NewsArticle, NewsCollection, NewsSource
 from ..config.settings import settings
+from .cache_service import cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ class StorageService:
     # Article operations
 
     async def save_article(self, article: NewsArticle) -> bool:
-        """Save a single article to database."""
+        """Save a single article to database and invalidate cache."""
         if not self.is_connected():
             logger.warning("Not connected to MongoDB")
             return False
@@ -115,6 +116,11 @@ class StorageService:
                 {"$set": article_dict},
                 upsert=True
             )
+
+            # Invalidate cache
+            if cache_service.is_connected():
+                await cache_service.invalidate_article(article.id)
+
             logger.debug(f"Saved article: {article.id}")
             return True
 
@@ -137,7 +143,13 @@ class StorageService:
         return saved_count
 
     async def get_article(self, article_id: str) -> Optional[NewsArticle]:
-        """Get a single article by ID."""
+        """Get a single article by ID (with caching)."""
+        # Try cache first
+        if cache_service.is_connected():
+            cached_data = await cache_service.get_article(article_id)
+            if cached_data:
+                return NewsArticle.from_dict(cached_data)
+
         if not self.is_connected():
             return None
 
@@ -145,6 +157,11 @@ class StorageService:
             article_dict = self.articles_collection.find_one({"id": article_id})
             if article_dict:
                 article_dict.pop('_id', None)  # Remove MongoDB _id
+
+                # Cache the result
+                if cache_service.is_connected():
+                    await cache_service.set_article(article_id, article_dict)
+
                 return NewsArticle.from_dict(article_dict)
             return None
 
