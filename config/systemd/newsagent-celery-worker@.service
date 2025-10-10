@@ -1,0 +1,26 @@
+[Unit]
+Description=NewsAgent Celery Worker - %i Queue
+After=network.target redis.service
+
+[Service]
+Type=forking
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/newsagent
+Environment="PATH=/var/www/newsagent/venv/bin"
+Environment="FLASK_ENV=production"
+EnvironmentFile=/var/www/newsagent/.env
+ExecStart=/var/www/newsagent/venv/bin/celery \
+    -A src.celery_app:celery_app worker \
+    -Q %i \
+    -n %i_worker@%%h \
+    --loglevel=info \
+    --logfile=/var/log/celery/worker_%i.log \
+    --pidfile=/var/run/celery/worker_%i.pid
+ExecStop=/bin/kill -s TERM $MAINPID
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

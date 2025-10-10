@@ -1,0 +1,25 @@
+[Unit]
+Description=NewsAgent Gunicorn Application
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/newsagent
+Environment="PATH=/var/www/newsagent/venv/bin"
+Environment="FLASK_ENV=production"
+EnvironmentFile=/var/www/newsagent/.env
+ExecStart=/var/www/newsagent/venv/bin/gunicorn \
+    --config /var/www/newsagent/gunicorn_config.py \
+    --bind 127.0.0.1:8000 \
+    src.app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

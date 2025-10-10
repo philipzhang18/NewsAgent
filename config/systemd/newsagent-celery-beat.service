@@ -1,0 +1,23 @@
+[Unit]
+Description=NewsAgent Celery Beat Scheduler
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/newsagent
+Environment="PATH=/var/www/newsagent/venv/bin"
+Environment="FLASK_ENV=production"
+EnvironmentFile=/var/www/newsagent/.env
+ExecStart=/var/www/newsagent/venv/bin/celery \
+    -A src.celery_app:celery_app beat \
+    --loglevel=info \
+    --logfile=/var/log/celery/beat.log \
+    --pidfile=/var/run/celery/beat.pid
+ExecStop=/bin/kill -s TERM $MAINPID
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

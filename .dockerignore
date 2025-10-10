@@ -1,0 +1,14 @@
+# Add __pycache__ to global gitignore
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Log files
+logs/
+*.log
+
+# Data files
+data/
+
+# SSL certificates
+ssl/
