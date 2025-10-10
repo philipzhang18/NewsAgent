@@ -95,7 +95,7 @@ def get_articles():
 				if category:
 					params.update({"category": category})
 
-			resp = requests.get(endpoint, params=params, timeout=20)
+			resp = requests.get(endpoint, params=params, timeout=60)
 			resp.raise_for_status()
 			data = resp.json()
 			articles = data.get("articles", [])

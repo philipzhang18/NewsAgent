@@ -4,7 +4,13 @@ from datetime import datetime
 import re
 import nltk
 from textblob import TextBlob
-import openai
+
+try:
+    from openai import AsyncOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    AsyncOpenAI = None
 
 from ..models.news_models import NewsArticle, SentimentType
 from ..config.settings import settings
@@ -13,9 +19,16 @@ logger = logging.getLogger(__name__)
 
 class NewsProcessor:
     """Process and analyze news articles."""
-    
+
     def __init__(self):
-        self.openai_client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+        if OPENAI_AVAILABLE and settings.OPENAI_API_KEY:
+            self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        else:
+            self.openai_client = None
+            if not OPENAI_AVAILABLE:
+                logger.warning("OpenAI module not available. AI-powered features will be disabled.")
+            elif not settings.OPENAI_API_KEY:
+                logger.warning("OpenAI API key not configured. AI-powered features will be disabled.")
         self._download_nltk_data()
     
     def _download_nltk_data(self):
@@ -111,6 +124,22 @@ class NewsProcessor:
     
     async def _analyze_sentiment(self, article: NewsArticle) -> NewsArticle:
         """Analyze article sentiment using OpenAI."""
+        if not self.openai_client:
+            # Fallback to TextBlob if OpenAI not available
+            try:
+                blob = TextBlob(article.content)
+                article.sentiment_score = blob.sentiment.polarity
+
+                if article.sentiment_score > 0.1:
+                    article.sentiment = SentimentType.POSITIVE
+                elif article.sentiment_score < -0.1:
+                    article.sentiment = SentimentType.NEGATIVE
+                else:
+                    article.sentiment = SentimentType.NEUTRAL
+            except:
+                article.sentiment = SentimentType.NEUTRAL
+            return article
+
         try:
             prompt = f"""
             Analyze the sentiment of the following news article. 
@@ -120,7 +149,7 @@ class NewsProcessor:
             Content: {article.content[:1000]}
             """
             
-            response = await self.openai_client.chat.completions.acreate(
+            response = await self.openai_client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=10,
@@ -163,6 +192,12 @@ class NewsProcessor:
     
     async def _detect_bias(self, article: NewsArticle) -> NewsArticle:
         """Detect potential bias in the article."""
+        if not self.openai_client:
+            # Set default values if OpenAI not available
+            article.bias_score = 0.5
+            article.credibility_score = 0.5
+            return article
+
         try:
             prompt = f"""
             Analyze the following news article for potential bias, exaggeration, or unreliable information.
@@ -173,7 +208,7 @@ class NewsProcessor:
             Content: {article.content[:1000]}
             """
             
-            response = await self.openai_client.chat.completions.acreate(
+            response = await self.openai_client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=10,
@@ -195,6 +230,10 @@ class NewsProcessor:
     
     async def _extract_5w1h(self, article: NewsArticle) -> NewsArticle:
         """Extract 5W1H information from article."""
+        if not self.openai_client:
+            # Skip 5W1H extraction if OpenAI not available
+            return article
+
         try:
             prompt = f"""
             Extract the 5W1H information from this news article:
@@ -218,7 +257,7 @@ class NewsProcessor:
             {article.content[:1500]}
             """
             
-            response = await self.openai_client.chat.completions.acreate(
+            response = await self.openai_client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=300,
@@ -255,6 +294,12 @@ class NewsProcessor:
             if article.word_count < 100:
                 article.summary = article.content
                 return article
+
+            if not self.openai_client:
+                # Fallback: use first few sentences if OpenAI not available
+                sentences = article.content.split('.')
+                article.summary = '. '.join(sentences[:3]) + '.'
+                return article
             
             prompt = f"""
             Create a concise summary of this news article in 2-3 sentences.
@@ -265,7 +310,7 @@ class NewsProcessor:
             {article.content[:2000]}
             """
             
-            response = await self.openai_client.chat.completions.acreate(
+            response = await self.openai_client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=150,

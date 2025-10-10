@@ -8,7 +8,7 @@ import uuid
 
 from ..collectors.base_collector import BaseCollector
 from ..collectors.rss_collector import RSSCollector
-from ..models.news_models import NewsSource, NewsArticle, NewsCollection
+from ..models.news_models import NewsSource, NewsArticle, NewsCollection, SourceType
 from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class NewsCollectorService:
                     source = NewsSource(
                         name=f"RSS_{rss_url.split('/')[-1]}",
                         url=rss_url.strip(),
-                        source_type=NewsSource.RSS,
+                        source_type=SourceType.RSS,
                         collection_interval=settings.COLLECTION_INTERVAL,
                         max_articles=settings.MAX_ARTICLES_PER_SOURCE
                     )
