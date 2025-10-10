@@ -1,0 +1,4 @@
+# Configure automated backup with cron
+# Run daily at 2 AM
+
+0 2 * * * /var/www/newsagent/scripts/backup.sh >> /var/log/newsagent/backup.log 2>&1
