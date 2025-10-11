@@ -133,6 +133,29 @@
 </div>
 
 <div class="row">
+    <!-- Database Storage Status -->
+    <div class="col-lg-12 mb-4">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-database"></i> Database Storage Status
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="databaseStatusContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading database status...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
     <!-- Sentiment Distribution -->
     <div class="col-lg-6 mb-4">
         <div class="card">
@@ -205,16 +228,19 @@ async function loadDashboardData() {
     try {
         // Load service status
         await loadServiceStatus();
-        
+
         // Load statistics
         await loadStatistics();
-        
+
+        // Load database status
+        await loadDatabaseStatus();
+
         // Load recent activity
         await loadRecentActivity();
-        
+
         // Load latest articles
         await loadLatestArticles();
-        
+
     } catch (error) {
         console.error('Error loading dashboard data:', error);
     }
@@ -296,6 +322,56 @@ async function loadStatistics() {
         }
     } catch (error) {
         console.error('Error loading statistics:', error);
+    }
+}
+
+async function loadDatabaseStatus() {
+    try {
+        const response = await fetch('/api/news/stats');
+        const data = await response.json();
+
+        if (data.success && data.data.database_stats) {
+            const dbStats = data.data.database_stats;
+            const content = document.getElementById('databaseStatusContent');
+
+            let statusHtml = `
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <div class="p-3">
+                            <i class="fas fa-file-alt fa-3x text-primary mb-2"></i>
+                            <h3 class="mb-1">${dbStats.stored_articles}</h3>
+                            <small class="text-muted">Stored Articles</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3">
+                            <i class="fas fa-sitemap fa-3x text-success mb-2"></i>
+                            <h3 class="mb-1">${dbStats.unique_sources}</h3>
+                            <small class="text-muted">Unique Sources</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3">
+                            <i class="fas fa-plug fa-3x text-info mb-2"></i>
+                            <h3 class="mb-1">${dbStats.data_source.toUpperCase()}</h3>
+                            <small class="text-muted">Data Source</small>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Data Source Information:</strong>
+                    ${dbStats.data_source === 'newsapi' ?
+                        'Articles are being fetched from NewsAPI and stored locally.' :
+                        'No articles found. Please configure your data sources.'}
+                </div>
+            `;
+
+            content.innerHTML = statusHtml;
+        }
+    } catch (error) {
+        console.error('Error loading database status:', error);
     }
 }
 
