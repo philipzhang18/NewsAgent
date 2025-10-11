@@ -134,7 +134,7 @@ def create_app():
         """Initialize the news collection service."""
         try:
             async def _init():
-                await collector_service.initialize()
+                await collector_service.initialize_collectors()
                 await monitoring_service.start()
 
             run_async(_init())
@@ -155,8 +155,9 @@ def create_app():
         try:
             async def _start():
                 if not collector_service.is_running:
-                    await collector_service.initialize()
-                    await collector_service.start()
+                    await collector_service.initialize_collectors()
+                    # Start collection cycle in background
+                    asyncio.create_task(collector_service.start_collection_cycle())
                 if not monitoring_service.is_running:
                     await monitoring_service.start()
 
@@ -178,7 +179,7 @@ def create_app():
         try:
             async def _stop():
                 if collector_service.is_running:
-                    await collector_service.stop()
+                    await collector_service.stop_collection_service()
                 if monitoring_service.is_running:
                     await monitoring_service.stop()
 
