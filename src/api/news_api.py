@@ -69,9 +69,37 @@ def get_status():
 				latest_article = max(articles_with_dates, key=lambda a: a.published_at)
 				last_collection = latest_article.published_at.isoformat() + 'Z'
 
-		# If no collectors but we have articles from NewsAPI, create virtual status
+		# If no collectors and no local articles, try to get data from NewsAPI
+		if status["total_collectors"] == 0 and total_articles == 0:
+			if settings.NEWS_API_KEY:
+				try:
+					# Fetch from NewsAPI to populate status
+					params = {"apiKey": settings.NEWS_API_KEY, "pageSize": 100, "country": "us"}
+					endpoint = "https://newsapi.org/v2/top-headlines"
+					resp = requests.get(endpoint, params=params, timeout=10)
+					resp.raise_for_status()
+					data = resp.json()
+					articles = data.get("articles", [])
+
+					# Count source distribution from NewsAPI
+					for article_data in articles:
+						source_name = (article_data.get("source") or {}).get("name") or "NewsAPI"
+						source_distribution[source_name] = source_distribution.get(source_name, 0) + 1
+
+					total_articles = len(articles)
+
+					# Get last collection time from NewsAPI articles
+					if articles:
+						published_dates = [a.get("publishedAt") for a in articles if a.get("publishedAt")]
+						if published_dates:
+							last_collection = max(published_dates)
+
+				except Exception as e:
+					logger.warning(f"Failed to fetch from NewsAPI for status: {str(e)}")
+
+		# If no collectors but we have articles, create virtual status
 		if status["total_collectors"] == 0 and total_articles > 0:
-			# We have data from NewsAPI, create virtual collectors
+			# We have data, create virtual collectors
 			collectors_info = {}
 			for idx, (source_name, count) in enumerate(source_distribution.items(), 1):
 				collectors_info[f"newsapi_source_{idx}"] = {
@@ -82,7 +110,7 @@ def get_status():
 				}
 
 			status = {
-				"service_running": True,  # Data is available even if not actively collecting
+				"service_running": True,  # Data is available
 				"total_collectors": len(source_distribution),
 				"collection_stats": {
 					"total_collections": len(source_distribution),
@@ -110,6 +138,8 @@ def get_status():
 		else:
 			# Update collection stats with actual data
 			status["collection_stats"]["total_articles"] = total_articles
+			if last_collection:
+				status["collection_stats"]["last_collection"] = last_collection
 
 		return jsonify({
 			"success": True,
