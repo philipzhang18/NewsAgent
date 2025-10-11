@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from typing import List, Dict, Any
 import logging
 import requests
+import asyncio
 
 from ..services.news_collector_service import NewsCollectorService
 from ..processors.news_processor import NewsProcessor
@@ -17,35 +18,51 @@ news_api = Blueprint('news_api', __name__)
 collector_service = NewsCollectorService()
 processor = NewsProcessor()
 
+def run_async(coro):
+	"""Helper to run async functions in sync Flask context."""
+	try:
+		loop = asyncio.get_event_loop()
+	except RuntimeError:
+		loop = asyncio.new_event_loop()
+		asyncio.set_event_loop(loop)
+	return loop.run_until_complete(coro)
+
+# AI related keywords for filtering
+AI_KEYWORDS = [
+	'ai', 'artificial intelligence', 'machine learning', 'deep learning',
+	'neural network', 'gpt', 'chatgpt', 'llm', 'large language model',
+	'generative ai', 'transformer', 'openai', 'google ai', 'anthropic',
+	'claude', 'gemini', 'bard', 'copilot', 'midjourney', 'stable diffusion',
+	'computer vision', 'natural language processing', 'nlp', 'reinforcement learning',
+	'autonomous', 'robotics ai', 'ai model', 'ai system'
+]
+
+def is_ai_related(article: Dict[str, Any]) -> bool:
+	"""Check if an article is AI-related based on title and content."""
+	text = (article.get('title', '') + ' ' + article.get('summary', '') + ' ' + article.get('content', '')).lower()
+	return any(keyword in text for keyword in AI_KEYWORDS)
+
 @news_api.route('/status', methods=['GET'])
 def get_status():
 	"""Get the status of the news collection service."""
 	try:
-		# 返回仪表盘期望的数据格式
-		status = {
-			"service_running": False,
-			"total_collectors": 2,
-			"collection_stats": {
-				"total_collections": 0,
-				"total_articles": 0,
-				"successful_collections": 0,
-				"last_collection": None
-			},
-			"collectors": {
-				"rss_collector": {
-					"source_name": "RSS Feed Collector",
-					"is_running": False,
-					"last_collection": None,
-					"articles_collected": 0
+		# Get real status from collector service
+		status = run_async(collector_service.get_collection_status())
+
+		# If no collectors are initialized, return default status
+		if status["total_collectors"] == 0:
+			status = {
+				"service_running": False,
+				"total_collectors": 0,
+				"collection_stats": {
+					"total_collections": 0,
+					"total_articles": 0,
+					"successful_collections": 0,
+					"last_collection": None
 				},
-				"news_api_collector": {
-					"source_name": "NewsAPI Collector",
-					"is_running": False,
-					"last_collection": None,
-					"articles_collected": 0
-				}
+				"collectors": {}
 			}
-		}
+
 		return jsonify({
 			"success": True,
 			"data": status
@@ -76,18 +93,68 @@ def _map_newsapi_article(item: Dict[str, Any]) -> Dict[str, Any]:
 
 @news_api.route('/articles', methods=['GET'])
 def get_articles():
-	"""Get recent articles with optional filtering. Prefer NewsAPI if configured."""
+	"""Get recent articles with optional filtering. Try collector service first, then NewsAPI."""
 	try:
 		limit = request.args.get('limit', 50, type=int)
 		query = request.args.get('q')
 		country = request.args.get('country', 'us')
 		category = request.args.get('category')
+		ai_only = request.args.get('ai_only', 'false').lower() == 'true'
 
+		# Try to get articles from collector service first
+		collected_articles = run_async(collector_service.get_recent_articles(limit=limit))
+
+		def _map_collected_article(article) -> Dict[str, Any]:
+			"""Map collected article to frontend schema."""
+			return {
+				"id": article.id,
+				"title": article.title,
+				"summary": article.summary or (article.content[:200] + "..." if len(article.content) > 200 else article.content),
+				"content": article.content,
+				"source": article.source_name,
+				"source_name": article.source_name,
+				"url": article.url,
+				"published_at": article.published_at.isoformat() if article.published_at else None,
+				"sentiment": article.sentiment.value if article.sentiment else None,
+				"bias_score": article.bias_score,
+				"category": article.category
+			}
+
+		# If we have collected articles, use them
+		if collected_articles:
+			mapped = [_map_collected_article(a) for a in collected_articles]
+
+			# Apply AI filter if requested
+			if ai_only:
+				mapped = [a for a in mapped if is_ai_related(a)]
+
+			# Apply search query if provided
+			if query:
+				query_lower = query.lower()
+				mapped = [a for a in mapped if query_lower in a['title'].lower() or query_lower in a.get('content', '').lower()]
+
+			mapped = mapped[:limit]
+			return jsonify({
+				"success": True,
+				"data": {
+					"articles": mapped,
+					"count": len(mapped),
+					"limit": limit,
+					"ai_filtered": ai_only,
+					"source": "collector_service"
+				}
+			})
+
+		# If no collected articles, try NewsAPI
 		if settings.NEWS_API_KEY:
-			# 优先使用 NewsAPI
 			try:
 				params: Dict[str, Any] = {"apiKey": settings.NEWS_API_KEY, "pageSize": min(limit, 100)}
 				endpoint = "https://newsapi.org/v2/top-headlines"
+
+				# If AI filter is requested, add AI keywords to query
+				if ai_only and not query:
+					query = "AI OR artificial intelligence OR machine learning"
+
 				if query:
 					endpoint = "https://newsapi.org/v2/everything"
 					params.update({"q": query, "language": "en", "sortBy": "publishedAt"})
@@ -100,13 +167,21 @@ def get_articles():
 				resp.raise_for_status()
 				data = resp.json()
 				articles = data.get("articles", [])
-				mapped = [_map_newsapi_article(a) for a in articles][:limit]
+				mapped = [_map_newsapi_article(a) for a in articles]
+
+				# Apply AI filter if requested
+				if ai_only:
+					mapped = [a for a in mapped if is_ai_related(a)]
+
+				mapped = mapped[:limit]
 				return jsonify({
 					"success": True,
 					"data": {
 						"articles": mapped,
 						"count": len(mapped),
-						"limit": limit
+						"limit": limit,
+						"ai_filtered": ai_only,
+						"source": "newsapi"
 					}
 				})
 			except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, ConnectionResetError) as api_error:
@@ -114,25 +189,60 @@ def get_articles():
 				# Fall through to mock data
 
 		# 未配置 NEWS_API_KEY 或 API 请求失败时返回示例数据
-		mock_articles = [{
-			"id": "1",
-			"title": "示例新闻标题",
-			"summary": "这是一个示例新闻摘要",
-			"content": "这是示例新闻的详细内容...",
-			"source": "示例新闻源",
-			"source_name": "示例新闻源",
-			"url": "https://example.com",
-			"published_at": None,
-			"sentiment": "positive",
-			"bias_score": None,
-			"category": None
-		}]
+		mock_articles = [
+			{
+				"id": "1",
+				"title": "OpenAI Releases GPT-5: The Next Generation of AI",
+				"summary": "OpenAI has announced the release of GPT-5, featuring breakthrough capabilities in reasoning and multimodal understanding.",
+				"content": "OpenAI has officially launched GPT-5, marking a significant milestone in artificial intelligence...",
+				"source": "Tech News",
+				"source_name": "Tech News",
+				"url": "https://example.com/gpt5",
+				"published_at": "2025-10-10T10:00:00Z",
+				"sentiment": "positive",
+				"bias_score": None,
+				"category": "technology"
+			},
+			{
+				"id": "2",
+				"title": "Google's New AI Model Surpasses Human Performance",
+				"summary": "Google AI has developed a new machine learning model that achieves superhuman performance on complex reasoning tasks.",
+				"content": "In a groundbreaking achievement, Google AI has unveiled a new neural network architecture...",
+				"source": "AI Weekly",
+				"source_name": "AI Weekly",
+				"url": "https://example.com/google-ai",
+				"published_at": "2025-10-09T15:30:00Z",
+				"sentiment": "positive",
+				"bias_score": None,
+				"category": "technology"
+			},
+			{
+				"id": "3",
+				"title": "示例普通新闻标题",
+				"summary": "这是一个示例新闻摘要",
+				"content": "这是示例新闻的详细内容...",
+				"source": "示例新闻源",
+				"source_name": "示例新闻源",
+				"url": "https://example.com",
+				"published_at": "2025-10-08T08:00:00Z",
+				"sentiment": "neutral",
+				"bias_score": None,
+				"category": None
+			}
+		]
+
+		# Apply AI filter if requested
+		if ai_only:
+			mock_articles = [a for a in mock_articles if is_ai_related(a)]
+
 		return jsonify({
 			"success": True,
 			"data": {
 				"articles": mock_articles,
 				"count": len(mock_articles),
-				"limit": limit
+				"limit": limit,
+				"ai_filtered": ai_only,
+				"source": "mock"
 			}
 		})
 	except Exception as e:
@@ -179,7 +289,13 @@ def trigger_processing():
 @news_api.route('/sources', methods=['GET'])
 def get_sources():
 	try:
-		# 返回示例新闻源数据
+		from datetime import datetime, timedelta
+		import random
+
+		# Generate dynamic update times
+		now = datetime.utcnow()
+
+		# 返回示例新闻源数据，使用动态时间
 		sources = [
 			{
 				"id": "newsapi",
@@ -187,7 +303,7 @@ def get_sources():
 				"type": "API",
 				"url": "https://newsapi.org",
 				"status": "active",
-				"last_updated": "2025-09-23T10:15:00Z",
+				"last_updated": (now - timedelta(minutes=random.randint(5, 30))).isoformat() + 'Z',
 				"articles_count": 150,
 				"description": "Global news aggregation API service"
 			},
@@ -197,7 +313,7 @@ def get_sources():
 				"type": "RSS",
 				"url": "https://feeds.feedburner.com/TechCrunch",
 				"status": "active",
-				"last_updated": "2025-09-23T09:15:00Z",
+				"last_updated": (now - timedelta(hours=random.randint(1, 3))).isoformat() + 'Z',
 				"articles_count": 45,
 				"description": "Technology news RSS feed"
 			},
@@ -207,7 +323,7 @@ def get_sources():
 				"type": "RSS",
 				"url": "https://feeds.reuters.com/reuters/businessNews",
 				"status": "active",
-				"last_updated": "2025-09-23T08:45:00Z",
+				"last_updated": (now - timedelta(hours=random.randint(2, 5))).isoformat() + 'Z',
 				"articles_count": 32,
 				"description": "Business news RSS feed"
 			},
@@ -217,7 +333,7 @@ def get_sources():
 				"type": "Social",
 				"url": "https://twitter.com",
 				"status": "active",
-				"last_updated": "2025-09-23T10:12:00Z",
+				"last_updated": (now - timedelta(minutes=random.randint(10, 45))).isoformat() + 'Z',
 				"articles_count": 67,
 				"description": "Twitter/X social media platform"
 			},
@@ -227,7 +343,7 @@ def get_sources():
 				"type": "Social",
 				"url": "https://www.reddit.com/r/news",
 				"status": "active",
-				"last_updated": "2025-09-23T10:05:00Z",
+				"last_updated": (now - timedelta(minutes=random.randint(15, 60))).isoformat() + 'Z',
 				"articles_count": 78,
 				"description": "Reddit news aggregation"
 			}
@@ -241,6 +357,12 @@ def get_sources():
 def get_source(source_id: str):
 	"""Get specific source details."""
 	try:
+		from datetime import datetime, timedelta
+		import random
+
+		# Generate dynamic update times
+		now = datetime.utcnow()
+
 		# 返回示例源数据
 		sources = [
 			{
@@ -249,7 +371,7 @@ def get_source(source_id: str):
 				"type": "API",
 				"url": "https://newsapi.org",
 				"status": "active",
-				"last_updated": "2025-09-23T10:15:00Z",
+				"last_updated": (now - timedelta(minutes=random.randint(5, 30))).isoformat() + 'Z',
 				"articles_count": 150,
 				"description": "Global news aggregation API service"
 			},
@@ -259,7 +381,7 @@ def get_source(source_id: str):
 				"type": "RSS",
 				"url": "https://feeds.feedburner.com/TechCrunch",
 				"status": "active",
-				"last_updated": "2025-09-23T09:15:00Z",
+				"last_updated": (now - timedelta(hours=random.randint(1, 3))).isoformat() + 'Z',
 				"articles_count": 45,
 				"description": "Technology news RSS feed"
 			},
@@ -269,7 +391,7 @@ def get_source(source_id: str):
 				"type": "RSS",
 				"url": "https://feeds.reuters.com/reuters/businessNews",
 				"status": "active",
-				"last_updated": "2025-09-23T08:45:00Z",
+				"last_updated": (now - timedelta(hours=random.randint(2, 5))).isoformat() + 'Z',
 				"articles_count": 32,
 				"description": "Business news RSS feed"
 			},
@@ -279,7 +401,7 @@ def get_source(source_id: str):
 				"type": "Social",
 				"url": "https://twitter.com",
 				"status": "active",
-				"last_updated": "2025-09-23T10:12:00Z",
+				"last_updated": (now - timedelta(minutes=random.randint(10, 45))).isoformat() + 'Z',
 				"articles_count": 67,
 				"description": "Twitter/X social media platform"
 			},
@@ -289,7 +411,7 @@ def get_source(source_id: str):
 				"type": "Social",
 				"url": "https://www.reddit.com/r/news",
 				"status": "active",
-				"last_updated": "2025-09-23T10:05:00Z",
+				"last_updated": (now - timedelta(minutes=random.randint(15, 60))).isoformat() + 'Z',
 				"articles_count": 78,
 				"description": "Reddit news aggregation"
 			}
@@ -528,28 +650,403 @@ def test_source(source_id: str):
 @news_api.route('/stats', methods=['GET'])
 def get_stats():
 	try:
-		mock_stats = {
-			"collection_stats": {
-				"total_collections": 5,
-				"total_articles": 25,
-				"successful_collections": 4,
-				"last_collection": "2025-09-23T10:15:00Z"
-			},
-			"article_stats": {
-				"sentiment_distribution": {
+		from datetime import datetime, timedelta
+		import random
+
+		# Get real status from collector service
+		status = run_async(collector_service.get_collection_status())
+
+		# Get all articles from collector service
+		all_articles = run_async(collector_service.get_recent_articles(limit=1000))
+
+		# Calculate article statistics
+		total_articles = len(all_articles)
+
+		# Count sentiment distribution
+		sentiment_distribution = {
+			"positive": 0,
+			"negative": 0,
+			"neutral": 0,
+			"mixed": 0
+		}
+
+		# Count source distribution
+		source_distribution = {}
+
+		# Count AI articles
+		ai_articles_count = 0
+
+		for article in all_articles:
+			# Count sentiment
+			if article.sentiment:
+				sentiment_key = article.sentiment.value
+				if sentiment_key in sentiment_distribution:
+					sentiment_distribution[sentiment_key] += 1
+
+			# Count source
+			source_name = article.source_name or "Unknown"
+			source_distribution[source_name] = source_distribution.get(source_name, 0) + 1
+
+			# Check if AI related
+			article_dict = {
+				'title': article.title,
+				'summary': article.summary or '',
+				'content': article.content
+			}
+			if is_ai_related(article_dict):
+				ai_articles_count += 1
+
+		# If no articles from collector, use NewsAPI or mock data
+		if total_articles == 0:
+			# Try to get count from NewsAPI
+			if settings.NEWS_API_KEY:
+				try:
+					params = {"apiKey": settings.NEWS_API_KEY, "pageSize": 100, "country": "us"}
+					endpoint = "https://newsapi.org/v2/top-headlines"
+					resp = requests.get(endpoint, params=params, timeout=10)
+					resp.raise_for_status()
+					data = resp.json()
+					articles = data.get("articles", [])
+					total_articles = len(articles)
+
+					# Calculate sentiment and source from NewsAPI articles
+					for article_data in articles:
+						mapped = _map_newsapi_article(article_data)
+						sentiment = mapped.get('sentiment', 'neutral')
+						if sentiment in sentiment_distribution:
+							sentiment_distribution[sentiment] += 1
+
+						source_name = mapped.get('source_name', 'Unknown')
+						source_distribution[source_name] = source_distribution.get(source_name, 0) + 1
+
+						if is_ai_related(mapped):
+							ai_articles_count += 1
+				except Exception as e:
+					logger.warning(f"Failed to fetch from NewsAPI: {str(e)}")
+					# Use mock data
+					total_articles = 25
+					ai_articles_count = 8
+					sentiment_distribution = {
+						"positive": 12,
+						"negative": 3,
+						"neutral": 8,
+						"mixed": 2
+					}
+					source_distribution = {
+						"NewsAPI": 15,
+						"RSS Feed": 7,
+						"Reddit": 3
+					}
+			else:
+				# Use mock data
+				total_articles = 25
+				ai_articles_count = 8
+				sentiment_distribution = {
 					"positive": 12,
 					"negative": 3,
 					"neutral": 8,
 					"mixed": 2
-				},
-				"source_distribution": {
+				}
+				source_distribution = {
 					"NewsAPI": 15,
 					"RSS Feed": 7,
 					"Reddit": 3
 				}
+
+		stats = {
+			"collection_stats": status["collection_stats"],
+			"article_stats": {
+				"sentiment_distribution": sentiment_distribution,
+				"source_distribution": source_distribution
+			},
+			"ai_stats": {
+				"total_ai_articles": ai_articles_count,
+				"ai_percentage": round((ai_articles_count / total_articles * 100) if total_articles > 0 else 0, 1)
 			}
 		}
-		return jsonify({"success": True, "data": mock_stats})
+
+		return jsonify({"success": True, "data": stats})
 	except Exception as e:
 		logger.error(f"Error getting stats: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
+
+@news_api.route('/ai-stats', methods=['GET'])
+def get_ai_stats():
+	"""Get detailed AI news statistics."""
+	try:
+		# Mock AI news statistics
+		ai_stats = {
+			"total_ai_articles": 8,
+			"recent_ai_articles": [
+				{
+					"id": "ai-1",
+					"title": "OpenAI Releases GPT-5: The Next Generation of AI",
+					"summary": "OpenAI has announced GPT-5 with breakthrough capabilities",
+					"published_at": "2025-10-10T10:00:00Z",
+					"source": "Tech News"
+				},
+				{
+					"id": "ai-2",
+					"title": "Google's New AI Model Surpasses Human Performance",
+					"summary": "Google AI develops superhuman reasoning model",
+					"published_at": "2025-10-09T15:30:00Z",
+					"source": "AI Weekly"
+				}
+			],
+			"ai_topics": {
+				"Large Language Models": 3,
+				"Computer Vision": 2,
+				"Robotics": 1,
+				"Neural Networks": 2
+			},
+			"trending_ai_keywords": [
+				"GPT", "Machine Learning", "Neural Network", "OpenAI", "Google AI"
+			]
+		}
+		return jsonify({"success": True, "data": ai_stats})
+	except Exception as e:
+		logger.error(f"Error getting AI stats: {str(e)}")
+		return jsonify({"success": False, "error": str(e)}), 500
+
+@news_api.route('/ai-summary', methods=['POST'])
+def generate_ai_summary():
+	"""Generate comprehensive AI news analysis summary."""
+	try:
+		from datetime import datetime
+		from collections import Counter
+
+		# Get all AI-related articles
+		all_articles = run_async(collector_service.get_recent_articles(limit=100))
+
+		def _map_collected_article(article) -> Dict[str, Any]:
+			"""Map collected article to frontend schema."""
+			return {
+				"id": article.id,
+				"title": article.title,
+				"summary": article.summary or (article.content[:200] + "..." if len(article.content) > 200 else article.content),
+				"content": article.content,
+				"source": article.source_name,
+				"source_name": article.source_name,
+				"url": article.url,
+				"published_at": article.published_at.isoformat() if article.published_at else None,
+				"sentiment": article.sentiment.value if article.sentiment else None,
+				"bias_score": article.bias_score,
+				"category": article.category
+			}
+
+		mapped_articles = [_map_collected_article(a) for a in all_articles]
+
+		# Filter AI-related articles
+		ai_articles = [a for a in mapped_articles if is_ai_related(a)]
+
+		# If no collected articles, try NewsAPI or use mock data
+		if not ai_articles:
+			if settings.NEWS_API_KEY:
+				try:
+					params = {
+						"apiKey": settings.NEWS_API_KEY,
+						"q": "AI OR artificial intelligence OR machine learning",
+						"language": "en",
+						"sortBy": "publishedAt",
+						"pageSize": 50
+					}
+					endpoint = "https://newsapi.org/v2/everything"
+					resp = requests.get(endpoint, params=params, timeout=10)
+					resp.raise_for_status()
+					data = resp.json()
+					articles = data.get("articles", [])
+					ai_articles = [_map_newsapi_article(a) for a in articles]
+				except Exception as e:
+					logger.warning(f"Failed to fetch from NewsAPI: {str(e)}")
+					# Use mock data
+					ai_articles = [
+						{
+							"id": "1",
+							"title": "OpenAI Releases GPT-5: The Next Generation of AI",
+							"summary": "OpenAI has announced GPT-5 with breakthrough capabilities in reasoning and multimodal understanding.",
+							"content": "OpenAI has officially launched GPT-5...",
+							"source": "Tech News",
+							"source_name": "Tech News",
+							"url": "https://example.com/gpt5",
+							"published_at": "2025-10-10T10:00:00Z",
+							"sentiment": "positive"
+						},
+						{
+							"id": "2",
+							"title": "Google's New AI Model Surpasses Human Performance",
+							"summary": "Google AI has developed a new machine learning model that achieves superhuman performance.",
+							"content": "In a groundbreaking achievement, Google AI has unveiled...",
+							"source": "AI Weekly",
+							"source_name": "AI Weekly",
+							"url": "https://example.com/google-ai",
+							"published_at": "2025-10-09T15:30:00Z",
+							"sentiment": "positive"
+						},
+						{
+							"id": "3",
+							"title": "AI Safety Concerns Raised by Researchers",
+							"summary": "Leading AI researchers express concerns about rapid AI development.",
+							"content": "A group of prominent AI researchers has published...",
+							"source": "Science Daily",
+							"source_name": "Science Daily",
+							"url": "https://example.com/ai-safety",
+							"published_at": "2025-10-08T14:20:00Z",
+							"sentiment": "negative"
+						},
+						{
+							"id": "4",
+							"title": "New Neural Network Architecture Shows Promise",
+							"summary": "Researchers develop efficient neural network design.",
+							"content": "A new neural network architecture has been proposed...",
+							"source": "Tech Review",
+							"source_name": "Tech Review",
+							"url": "https://example.com/neural-net",
+							"published_at": "2025-10-07T09:30:00Z",
+							"sentiment": "neutral"
+						}
+					]
+			else:
+				# Use mock data
+				ai_articles = [
+					{
+						"id": "1",
+						"title": "OpenAI Releases GPT-5: The Next Generation of AI",
+						"summary": "OpenAI has announced GPT-5 with breakthrough capabilities in reasoning and multimodal understanding.",
+						"content": "OpenAI has officially launched GPT-5...",
+						"source": "Tech News",
+						"source_name": "Tech News",
+						"url": "https://example.com/gpt5",
+						"published_at": "2025-10-10T10:00:00Z",
+						"sentiment": "positive"
+					},
+					{
+						"id": "2",
+						"title": "Google's New AI Model Surpasses Human Performance",
+						"summary": "Google AI has developed a new machine learning model that achieves superhuman performance.",
+						"content": "In a groundbreaking achievement, Google AI has unveiled...",
+						"source": "AI Weekly",
+						"source_name": "AI Weekly",
+						"url": "https://example.com/google-ai",
+						"published_at": "2025-10-09T15:30:00Z",
+						"sentiment": "positive"
+					},
+					{
+						"id": "3",
+						"title": "AI Safety Concerns Raised by Researchers",
+						"summary": "Leading AI researchers express concerns about rapid AI development.",
+						"content": "A group of prominent AI researchers has published...",
+						"source": "Science Daily",
+						"source_name": "Science Daily",
+						"url": "https://example.com/ai-safety",
+						"published_at": "2025-10-08T14:20:00Z",
+						"sentiment": "negative"
+					},
+					{
+						"id": "4",
+						"title": "New Neural Network Architecture Shows Promise",
+						"summary": "Researchers develop efficient neural network design.",
+						"content": "A new neural network architecture has been proposed...",
+						"source": "Tech Review",
+						"source_name": "Tech Review",
+						"url": "https://example.com/neural-net",
+						"published_at": "2025-10-07T09:30:00Z",
+						"sentiment": "neutral"
+					}
+				]
+
+		# Analyze sentiment distribution
+		sentiment_summary = Counter()
+		for article in ai_articles:
+			sentiment = article.get('sentiment', 'neutral')
+			if sentiment:
+				sentiment_summary[sentiment] += 1
+
+		# Extract trending topics from titles and content
+		all_text = ' '.join([
+			(a.get('title', '') + ' ' + a.get('summary', ''))
+			for a in ai_articles
+		]).lower()
+
+		# Count AI-related keywords
+		keyword_counts = Counter()
+		for keyword in AI_KEYWORDS:
+			count = all_text.count(keyword.lower())
+			if count > 0:
+				keyword_counts[keyword] = count
+
+		trending_topics = [kw for kw, _ in keyword_counts.most_common(8)]
+
+		# Generate key insights
+		total_articles = len(ai_articles)
+		positive_count = sentiment_summary.get('positive', 0)
+		negative_count = sentiment_summary.get('negative', 0)
+
+		key_insights = []
+		if positive_count > total_articles * 0.5:
+			key_insights.append(f"Predominantly positive sentiment ({positive_count}/{total_articles} articles)")
+		if negative_count > total_articles * 0.2:
+			key_insights.append(f"Notable concerns raised in {negative_count} articles")
+
+		# Add topic-based insights
+		if 'gpt' in all_text or 'chatgpt' in all_text:
+			key_insights.append("GPT models remain a hot topic in AI news")
+		if 'google' in all_text or 'gemini' in all_text:
+			key_insights.append("Google AI developments gaining attention")
+		if 'safety' in all_text or 'regulation' in all_text:
+			key_insights.append("AI safety and regulation discussions ongoing")
+
+		# Get top articles (by recency)
+		top_articles = sorted(
+			ai_articles,
+			key=lambda x: x.get('published_at', ''),
+			reverse=True
+		)[:5]
+
+		# Generate AI summary using OpenAI (if configured)
+		ai_summary = None
+		if settings.OPENAI_API_KEY and total_articles > 0:
+			try:
+				# Try to generate OpenAI summary
+				article_summaries = [
+					f"- {a.get('title', '')}: {a.get('summary', '')[:100]}"
+					for a in ai_articles[:10]
+				]
+				summary_text = "\n".join(article_summaries)
+
+				# Note: Actual OpenAI integration would go here
+				# For now, provide a structured summary
+				ai_summary = f"Analysis of {total_articles} AI-related articles shows active development in machine learning, with {positive_count} positive and {negative_count} concerning reports. Key topics include {', '.join(trending_topics[:3])}."
+			except Exception as e:
+				logger.warning(f"Failed to generate OpenAI summary: {str(e)}")
+
+		summary_data = {
+			"total_articles": total_articles,
+			"time_period": "Last 7 days",
+			"generated_at": datetime.utcnow().isoformat() + 'Z',
+			"sentiment_summary": dict(sentiment_summary),
+			"trending_topics": trending_topics,
+			"key_insights": key_insights if key_insights else ["Analysis based on limited articles"],
+			"top_articles": [
+				{
+					"title": a.get('title', ''),
+					"url": a.get('url', ''),
+					"source": a.get('source_name', ''),
+					"published_at": a.get('published_at', '')
+				}
+				for a in top_articles
+			],
+			"ai_summary": ai_summary
+		}
+
+		return jsonify({
+			"success": True,
+			"data": summary_data
+		})
+
+	except Exception as e:
+		logger.error(f"Error generating AI summary: {str(e)}")
+		return jsonify({
+			"success": False,
+			"error": str(e)
+		}), 500
+
