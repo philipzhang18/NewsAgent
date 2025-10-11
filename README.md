@@ -1,74 +1,311 @@
-# 📰 News Agent
+# 📰 NewsAgent - AI-Powered News Intelligence Platform
 
-News Agent is an intelligent news processing agent that automatically collects, filters, summarizes, and analyzes news information. It leverages large language models (LLMs) and knowledge graphs to help news professionals and content creators efficiently acquire and process news content.
+<div align="center">
 
-News Agent 是一个面向新闻专业的智能代理 (Agent)，用于自动化新闻采集、信息筛选、摘要生成和舆情分析。它结合了大语言模型 (LLM) 与新闻领域知识，帮助新闻从业者更高效地获取和处理资讯。
+**Intelligent News Collection, Analysis & Visualization Platform**
 
----
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.0-green.svg)](https://flask.palletsprojects.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-success.svg)]()
 
-## ✨ Key Features / 功能特点
+[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [API](#api-reference) • [Deployment](#deployment)
 
-- **Multi-source Collection / 新闻检索**: Collects real-time news from multiple news websites, RSS feeds, and social media APIs / 从多渠道（新闻网站、RSS、社交媒体 API）获取实时新闻
-- **Information Extraction / 信息抽取**: Extracts key news elements (5W1H: Who, What, When, Where, Why, How) / 提取新闻核心要素（5W1H：Who, What, When, Where, Why, How）
-- **Automatic Summarization / 摘要生成**: Generates news summaries with support for long-form compression / 自动生成新闻摘要，支持长文压缩
-- **Source Verification / 多源比对**: Compares multiple media reports on the same event to identify discrepancies / 对同一事件的多家媒体报道进行比对，识别差异
-- **Sentiment Analysis / 舆情分析**: Analyzes public sentiment on social platforms and trending topics / 分析社交平台上的相关评论与情绪趋势
-- **Bias Detection / 新闻伦理提醒**: Identifies potential bias, exaggeration, or unreliable sources / 在输出中提示可能的偏见、虚假或不当引用
+</div>
 
 ---
 
-## 📦 Installation / 安装
+## 🌟 Overview
+
+NewsAgent is an enterprise-grade news intelligence platform that automatically collects, processes, and analyzes news from multiple sources using AI and machine learning. It provides real-time insights, sentiment analysis, bias detection, and interactive visualizations.
+
+### Key Highlights
+
+- 🤖 **AI-Powered Analysis**: OpenAI GPT integration for intelligent content processing
+- 📊 **Interactive Dashboard**: Real-time data visualization with Plotly/Dash
+- 🔍 **Smart Search**: Intelligent search with sentiment and keyword filtering
+- 🌐 **Multi-Source Collection**: RSS, APIs, Twitter, Reddit, web scraping
+- ⚡ **Async Processing**: Celery task queue for background operations
+- 🔒 **Enterprise Security**: HTTPS, CORS, rate limiting, API authentication
+- 📈 **Monitoring & Alerts**: Comprehensive health checks and metrics
+- 💾 **Data Protection**: Automated backup and recovery system
+- 🐳 **Docker Ready**: Full containerization support
+
+---
+
+## ✨ Features
+
+### News Collection
+- **Multi-Source Support**: RSS feeds, NewsAPI, Twitter/X, Reddit, web scraping
+- **Automatic Scheduling**: Configurable collection intervals with Celery
+- **Smart Caching**: Redis-based caching to reduce API calls
+- **Error Handling**: Robust retry logic and graceful degradation
+
+### AI-Powered Processing
+- **Sentiment Analysis**: Emotional tone detection (positive/neutral/negative)
+- **Bias Detection**: Political and editorial bias identification
+- **5W1H Extraction**: Who, What, When, Where, Why, How analysis
+- **Auto-Summarization**: Intelligent content summarization
+- **Keyword Extraction**: Automatic keyword and entity recognition
+
+### Data Visualization
+- **Real-Time Dashboard**: Interactive charts and graphs
+- **Sentiment Timeline**: Trend analysis over time
+- **Source Analytics**: Article distribution by source
+- **Keyword Cloud**: Most frequent topics and terms
+- **Custom Reports**: Export and share insights
+
+### Search & Filter
+- **Intelligent Search**: Full-text search across titles, content, keywords
+- **Advanced Filters**: By sentiment, source, date range, keywords
+- **Saved Searches**: Bookmark and reuse search queries
+- **Export Results**: CSV, JSON, PDF formats
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.8 or higher
+- Redis Server (optional, for caching)
+- MongoDB (optional, for persistence)
+- OpenAI API Key
+- NewsAPI Key
+
+### Installation
 
 ```bash
-# Clone repository / 克隆仓库
-git clone https://github.com/philipzhang18/NewsAgent.git
-cd NewsAgent
+# 1. Clone repository
+git clone <repository-url>
+cd newsagent
 
-# Create virtual environment (recommended) / 建立虚拟环境 (推荐)
-python -m venv venv
-source venv/bin/activate   # Linux / macOS
-venv\Scripts\activate      # Windows
+# 2. Create virtual environment
+python -m venv .venv
 
-# Install dependencies / 安装依赖
+# Windows
+.venv\Scripts\activate
+
+# Linux/Mac
+source .venv/bin/activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. Configure environment
+cp env.example .env
+# Edit .env with your API keys
+
+# 5. Run application
+python run.py
 ```
 
-## Configuration
+### Access the Application
 
-1. Copy `.env.example` to `.env`
-2. Fill in your API keys and configuration settings
-3. Run the application
+- **Main Application**: http://localhost:5000
+- **Interactive Dashboard**: http://localhost:5000/dashboard/
+- **Health Check**: http://localhost:5000/api/health
 
-## Usage
+---
+
+## 📖 Documentation
+
+### Core Documentation
+
+- [**Deployment Guide**](docs/DEPLOYMENT_GUIDE.md) - Production deployment with Nginx/Gunicorn
+- [**Celery Usage**](docs/CELERY_USAGE.md) - Async task queue configuration
+- [**Visualization Guide**](docs/VISUALIZATION_GUIDE.md) - Dashboard and charts
+- [**HTTPS & CORS**](docs/HTTPS_CORS_GUIDE.md) - Security configuration
+- [**Backup & Recovery**](docs/BACKUP_RECOVERY_GUIDE.md) - Data protection
+
+### Additional Resources
+
+- [Architecture Overview](PROJECT_STRUCTURE.md)
+- [Startup Guide](STARTUP.md)
+
+---
+
+## 🔧 Configuration
+
+### Environment Variables
+
+```env
+# API Keys (Required)
+OPENAI_API_KEY=your_openai_key
+NEWS_API_KEY=your_newsapi_key
+
+# Application
+FLASK_SECRET_KEY=your_secret_key
+DEBUG=True
+LOG_LEVEL=INFO
+
+# Database (Optional)
+MONGODB_URI=mongodb://localhost:27017/news_agent
+REDIS_URL=redis://localhost:6379
+
+# Celery (Optional)
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
+```
+
+---
+
+## 🎯 Usage Examples
+
+### Start Services
 
 ```bash
-# Start the news collection service
-python src/services/news_collector.py
+# Start main application
+python run.py
 
-# Start the web interface
-python src/app.py
+# Start Celery workers (optional, separate terminal)
+celery -A src.celery_app:celery_app worker -Q collection,processing -l info
 
-# Run analysis tasks
-python src/analysis/news_analyzer.py
+# Start Celery beat scheduler (optional)
+celery -A src.celery_app:celery_app beat -l info
 ```
 
-## Project Structure
+### API Usage
+
+```python
+import requests
+
+# Get latest articles
+response = requests.get('http://localhost:5000/api/news/articles?limit=10')
+articles = response.json()
+
+# Trigger manual collection
+response = requests.post('http://localhost:5000/api/news/collect')
+
+# Get statistics
+response = requests.get('http://localhost:5000/api/news/stats')
+stats = response.json()
+```
+
+---
+
+## 🐳 Docker Deployment
+
+### Using Docker Compose
+
+```bash
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+Services included: app, workers, mongodb, redis, nginx
+
+---
+
+## 📊 Architecture
 
 ```
-NewsAgent/
-├── src/
-│   ├── collectors/      # News collection modules
-│   ├── processors/      # Text processing and analysis
-│   ├── services/        # Core services
-│   ├── api/            # API endpoints
-│   ├── models/         # Data models
-│   └── utils/          # Utility functions
-├── data/               # Data storage
-├── config/             # Configuration files
-├── tests/              # Test files
-└── docs/               # Documentation
+┌─────────────────────────────────────────────────┐
+│                 Web Interface                   │
+│           (Flask + Bootstrap + Dash)            │
+├─────────────────────────────────────────────────┤
+│                  API Layer                      │
+│         (RESTful + WebSocket Support)           │
+├─────────────────────────────────────────────────┤
+│              Service Layer                      │
+│   NewsCollector │ Processor │ Monitoring       │
+├─────────────────────────────────────────────────┤
+│            Background Tasks                     │
+│        (Celery + Redis Message Queue)          │
+├─────────────────────────────────────────────────┤
+│              Data Storage                       │
+│        MongoDB │ Redis │ File System           │
+└─────────────────────────────────────────────────┘
 ```
 
-## License
+---
 
-MIT License
+## 🔐 Security
+
+### Implemented Features
+
+- ✅ **HTTPS Support**: SSL/TLS encryption
+- ✅ **CORS Configuration**: Cross-origin control
+- ✅ **Rate Limiting**: API throttling
+- ✅ **API Authentication**: Secure access
+- ✅ **Input Validation**: Data sanitization
+- ✅ **Secret Management**: Environment config
+
+---
+
+## 📈 Monitoring
+
+### Health Checks
+
+```bash
+# Basic health check
+curl http://localhost:5000/api/health
+
+# Detailed monitoring
+curl http://localhost:5000/api/monitoring/health
+
+# System metrics
+curl http://localhost:5000/api/monitoring/metrics
+```
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+pytest
+
+# With coverage
+pytest --cov=src --cov-report=html
+
+# Specific test
+pytest tests/test_cache_service.py
+```
+
+---
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+newsagent/
+├── src/              # Source code
+│   ├── api/          # API endpoints
+│   ├── collectors/   # News collectors
+│   ├── processors/   # Content processing
+│   ├── services/     # Business logic
+│   └── models/       # Data models
+├── tests/            # Test suite
+├── config/           # Configurations
+├── scripts/          # Utility scripts
+└── docs/             # Documentation
+```
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/yourusername/newsagent/issues)
+- **Documentation**: See `/docs` folder
+
+---
+
+<div align="center">
+
+Made with ❤️ by the NewsAgent Team
+
+</div>
