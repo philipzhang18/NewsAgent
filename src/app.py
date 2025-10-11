@@ -34,10 +34,10 @@ def create_app():
     app = Flask(__name__)
     app.secret_key = settings.FLASK_SECRET_KEY
     
-    # Initialize enhanced CORS
+    # Initialize enhanced CORS with wildcard for local development
     init_cors(
         app,
-        origins=['http://localhost:3000', 'http://localhost:5000', 'http://127.0.0.1:5000'],
+        origins=['http://localhost:*', 'http://127.0.0.1:*'],
         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allow_credentials=True
     )
