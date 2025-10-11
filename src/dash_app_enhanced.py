@@ -48,8 +48,9 @@ def create_enhanced_dash_app(flask_app: Flask) -> Dash:
                 dcc.Input(
                     id='search-input',
                     type='text',
-                    placeholder='Search by title, content, keywords, or source...',
-                    style={'width': '100%', 'padding': '10px', 'fontSize': '14px', 'borderRadius': '5px'}
+                    placeholder='Search by title, content, keywords, or source... (Press Enter or click Search)',
+                    debounce=True,
+                    style={'width': '100%', 'padding': '10px', 'fontSize': '14px', 'borderRadius': '5px', 'border': '1px solid #ddd'}
                 ),
             ], style={'flex': '2', 'marginRight': '10px'}),
 
@@ -141,22 +142,23 @@ def register_enhanced_callbacks(dash_app: Dash):
 
     @dash_app.callback(
         Output('search-results-store', 'data'),
-        Input('search-button', 'n_clicks'),
+        [Input('search-button', 'n_clicks'),
+         Input('search-input', 'n_submit')],  # Also trigger on Enter key
         State('search-input', 'value'),
         State('sentiment-filter', 'value'),
         State('time-range-selector', 'value')
     )
-    def perform_search(n_clicks, search_text, sentiment, days):
-        """Execute intelligent search."""
-        if n_clicks == 0:
-            return None
-
+    def perform_search(n_clicks, n_submit, search_text, sentiment, days):
+        """Execute intelligent search with keyword support."""
         import asyncio
+        import requests
+        from src.config.settings import settings
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         try:
-            # Build query
+            # First try to get from storage
             filters = {}
 
             # Time filter
@@ -168,12 +170,50 @@ def register_enhanced_callbacks(dash_app: Dash):
             if sentiment and sentiment != 'all':
                 filters['sentiment'] = sentiment
 
-            # Get articles
+            # Get articles from storage
             articles = loop.run_until_complete(
                 storage_service.query_articles(filters, limit=100)
             )
 
-            # Text search if provided
+            # If no articles in storage and search text provided, try NewsAPI
+            if not articles and search_text and settings.NEWS_API_KEY:
+                try:
+                    params = {
+                        'apiKey': settings.NEWS_API_KEY,
+                        'q': search_text,
+                        'language': 'en',
+                        'sortBy': 'publishedAt',
+                        'pageSize': 50
+                    }
+
+                    resp = requests.get(
+                        'https://newsapi.org/v2/everything',
+                        params=params,
+                        timeout=10
+                    )
+
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        newsapi_articles = data.get('articles', [])
+
+                        # Convert NewsAPI articles to our format
+                        results = []
+                        for item in newsapi_articles[:50]:
+                            results.append({
+                                'id': item.get('url', ''),
+                                'title': item.get('title', ''),
+                                'source': item.get('source', {}).get('name', 'NewsAPI'),
+                                'published': item.get('publishedAt', '')[:10] if item.get('publishedAt') else '',
+                                'sentiment': 'neutral',
+                                'summary': item.get('description', '') or item.get('content', '')[:200] + '...',
+                                'url': item.get('url', ''),
+                                'content': item.get('content', '') or item.get('description', '')
+                            })
+                        return results
+                except Exception as e:
+                    logger.warning(f"NewsAPI search failed: {str(e)}")
+
+            # Text search in stored articles if provided
             if search_text and articles:
                 search_lower = search_text.lower()
                 filtered = []
@@ -192,14 +232,14 @@ def register_enhanced_callbacks(dash_app: Dash):
                     'id': article.id,
                     'title': article.title,
                     'source': article.source_name,
-                    'published': article.published_at.isoformat() if article.published_at else '',
-                    'sentiment': article.sentiment.value if hasattr(article, 'sentiment') else 'neutral',
-                    'summary': article.summary or article.content[:200] + '...',
+                    'published': article.published_at.isoformat()[:10] if article.published_at else '',
+                    'sentiment': article.sentiment.value if hasattr(article.sentiment, 'value') else str(article.sentiment),
+                    'summary': article.summary or article.content[:200] + '...' if article.content else '',
                     'url': article.url,
-                    'content': article.content
+                    'content': article.content or ''
                 })
 
-            return results
+            return results if results else []
 
         finally:
             loop.close()
@@ -209,9 +249,20 @@ def register_enhanced_callbacks(dash_app: Dash):
         if not search_results:
             return html.Div([
                 html.Div([
-                    html.I(className='fas fa-search', style={'fontSize': '48px', 'color': '#ccc'}),
+                    html.I(className='fas fa-search', style={'fontSize': '48px', 'color': '#ccc', 'marginBottom': '20px'}),
                     html.H3('No articles found', style={'color': '#666', 'marginTop': '20px'}),
-                    html.P('Try adjusting your search criteria or filters')
+                    html.P('Try one of the following:', style={'marginBottom': '15px'}),
+                    html.Ul([
+                        html.Li('Enter a keyword (e.g., "AI", "climate", "technology") and click Search'),
+                        html.Li('Try a broader search term'),
+                        html.Li('Adjust the time range filter'),
+                        html.Li('Change or remove the sentiment filter')
+                    ], style={'textAlign': 'left', 'maxWidth': '400px', 'margin': '0 auto', 'color': '#666'}),
+                    html.Div([
+                        html.P('💡 Tip: The search will query NewsAPI for latest articles if no local data is found',
+                              style={'marginTop': '20px', 'padding': '15px', 'backgroundColor': '#EFF6FF',
+                                    'borderRadius': '8px', 'color': '#1E40AF', 'fontSize': '14px'})
+                    ])
                 ], style={'textAlign': 'center', 'padding': '60px', 'backgroundColor': 'white',
                          'borderRadius': '10px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'})
             ])
