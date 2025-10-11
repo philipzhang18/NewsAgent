@@ -32,6 +32,7 @@ Thumbs.db
 # News Agent specific
 news_agent.log
 data/
+!data/sample_data.py
 temp/
 
 # Claude Code settings
