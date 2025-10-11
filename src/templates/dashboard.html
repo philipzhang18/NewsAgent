@@ -15,7 +15,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
@@ -25,7 +25,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
@@ -35,13 +35,54 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
                 <i class="fas fa-chart-line fa-2x mb-2"></i>
                 <div class="stats-number" id="successRate">-</div>
                 <div>Success Rate</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI News Statistics Card -->
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card ai-news-card" style="cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;" onclick="goToAINews()">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-2 text-center">
+                        <i class="fas fa-robot fa-4x" style="opacity: 0.9;"></i>
+                    </div>
+                    <div class="col-md-7">
+                        <h4 class="mb-2">
+                            <i class="fas fa-brain me-2"></i>
+                            AI News Intelligence
+                        </h4>
+                        <p class="mb-2">
+                            Track the latest developments in Artificial Intelligence, Machine Learning, and emerging AI technologies.
+                        </p>
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-light text-dark me-2">
+                                <span id="aiArticlesCount">-</span> AI Articles
+                            </span>
+                            <span class="badge bg-light text-dark">
+                                <span id="aiPercentage">-</span>% of Total
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <button class="btn btn-light btn-lg" onclick="goToAINews(); event.stopPropagation();">
+                            <i class="fas fa-arrow-right me-2"></i>
+                            View AI News
+                        </button>
+                        <p class="mt-2 mb-0 small">
+                            Click to explore all AI-related articles
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -225,24 +266,30 @@ async function loadStatistics() {
     try {
         const response = await fetch('/api/news/stats');
         const data = await response.json();
-        
+
         if (data.success) {
             const stats = data.data;
-            
+
             // Update statistics cards
             document.getElementById('totalArticles').textContent = stats.collection_stats.total_articles;
             document.getElementById('activeSources').textContent = stats.collection_stats.total_collections;
-            
+
             if (stats.collection_stats.last_collection) {
                 const lastCollection = new Date(stats.collection_stats.last_collection);
                 document.getElementById('lastCollection').textContent = lastCollection.toLocaleDateString();
             }
-            
-            const successRate = stats.collection_stats.total_collections > 0 
+
+            const successRate = stats.collection_stats.total_collections > 0
                 ? Math.round((stats.collection_stats.successful_collections / stats.collection_stats.total_collections) * 100)
                 : 0;
             document.getElementById('successRate').textContent = successRate + '%';
-            
+
+            // Update AI news statistics
+            if (stats.ai_stats) {
+                document.getElementById('aiArticlesCount').textContent = stats.ai_stats.total_ai_articles;
+                document.getElementById('aiPercentage').textContent = stats.ai_stats.ai_percentage;
+            }
+
             // Create charts
             createSentimentChart(stats.article_stats.sentiment_distribution);
             createSourceChart(stats.article_stats.source_distribution);
@@ -415,15 +462,19 @@ function createSourceChart(sourceData) {
 
 function getSentimentIcon(sentiment) {
     if (!sentiment) return '<i class="fas fa-minus"></i>';
-    
+
     const icons = {
         'positive': '<i class="fas fa-smile"></i>',
         'negative': '<i class="fas fa-frown"></i>',
         'neutral': '<i class="fas fa-meh"></i>',
         'mixed': '<i class="fas fa-surprise"></i>'
     };
-    
+
     return icons[sentiment] || '<i class="fas fa-minus"></i>';
+}
+
+function goToAINews() {
+    window.location.href = '/articles?ai_only=true';
 }
 </script>
 {% endblock %}

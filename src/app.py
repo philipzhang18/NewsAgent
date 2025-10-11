@@ -54,13 +54,13 @@ def create_app():
     
     @app.route('/')
     def index():
-        """Main page."""
-        return render_template('index.html')
-    
-    @app.route('/dashboard')
-    def dashboard():
-        """Dashboard page."""
+        """Main dashboard page with AI news statistics."""
         return render_template('dashboard.html')
+
+    @app.route('/home')
+    def home():
+        """Original home page."""
+        return render_template('index.html')
     
     @app.route('/articles')
     def articles_page():
