@@ -42,9 +42,10 @@ class VisualizationService:
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            articles = await storage_service.query_articles({
-                'collected_at': {'$gte': cutoff_date}
-            })
+            articles = await storage_service.get_articles(
+                limit=1000,
+                start_date=cutoff_date
+            )
 
             # Count sentiments
             sentiments = {'positive': 0, 'neutral': 0, 'negative': 0}
@@ -95,9 +96,10 @@ class VisualizationService:
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            articles = await storage_service.query_articles({
-                'collected_at': {'$gte': cutoff_date}
-            })
+            articles = await storage_service.get_articles(
+                limit=1000,
+                start_date=cutoff_date
+            )
 
             # Group by date
             daily_sentiments = {}
@@ -179,9 +181,10 @@ class VisualizationService:
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            articles = await storage_service.query_articles({
-                'collected_at': {'$gte': cutoff_date}
-            })
+            articles = await storage_service.get_articles(
+                limit=1000,
+                start_date=cutoff_date
+            )
 
             # Count by source
             source_counts = Counter([article.source_name for article in articles])
@@ -220,9 +223,10 @@ class VisualizationService:
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            articles = await storage_service.query_articles({
-                'collected_at': {'$gte': cutoff_date}
-            })
+            articles = await storage_service.get_articles(
+                limit=1000,
+                start_date=cutoff_date
+            )
 
             # Group by date
             daily_counts = Counter([article.collected_at.date() for article in articles])
@@ -266,9 +270,10 @@ class VisualizationService:
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            articles = await storage_service.query_articles({
-                'collected_at': {'$gte': cutoff_date}
-            })
+            articles = await storage_service.get_articles(
+                limit=1000,
+                start_date=cutoff_date
+            )
 
             # Collect all keywords
             all_keywords = []
@@ -316,9 +321,10 @@ class VisualizationService:
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            articles = await storage_service.query_articles({
-                'collected_at': {'$gte': cutoff_date}
-            })
+            articles = await storage_service.get_articles(
+                limit=1000,
+                start_date=cutoff_date
+            )
 
             # Collect bias scores
             bias_scores = []

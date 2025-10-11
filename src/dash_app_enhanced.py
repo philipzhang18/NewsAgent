@@ -170,9 +170,18 @@ def register_enhanced_callbacks(dash_app: Dash):
             if sentiment and sentiment != 'all':
                 filters['sentiment'] = sentiment
 
+            # Build parameters for get_articles
+            cutoff_date = None
+            if days:
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+
             # Get articles from storage
             articles = loop.run_until_complete(
-                storage_service.query_articles(filters, limit=100)
+                storage_service.get_articles(
+                    limit=100,
+                    sentiment=sentiment if sentiment != 'all' else None,
+                    start_date=cutoff_date
+                )
             )
 
             # If no articles in storage and search text provided, try NewsAPI
@@ -196,20 +205,53 @@ def register_enhanced_callbacks(dash_app: Dash):
                         data = resp.json()
                         newsapi_articles = data.get('articles', [])
 
-                        # Convert NewsAPI articles to our format
-                        results = []
+                        # Convert NewsAPI articles to NewsArticle model and save to database
+                        from src.models.news_models import NewsArticle
+                        import hashlib
+                        import uuid
+
+                        saved_articles = []
                         for item in newsapi_articles[:50]:
-                            results.append({
-                                'id': item.get('url', ''),
-                                'title': item.get('title', ''),
-                                'source': item.get('source', {}).get('name', 'NewsAPI'),
-                                'published': item.get('publishedAt', '')[:10] if item.get('publishedAt') else '',
-                                'sentiment': 'neutral',
-                                'summary': item.get('description', '') or item.get('content', '')[:200] + '...',
-                                'url': item.get('url', ''),
-                                'content': item.get('content', '') or item.get('description', '')
-                            })
-                        return results
+                            try:
+                                # Generate unique ID from URL
+                                article_id = hashlib.md5(item.get('url', '').encode()).hexdigest() if item.get('url') else str(uuid.uuid4())
+
+                                # Create NewsArticle object
+                                article = NewsArticle(
+                                    id=article_id,
+                                    title=item.get('title', ''),
+                                    content=item.get('content', '') or item.get('description', ''),
+                                    summary=item.get('description', ''),
+                                    url=item.get('url', ''),
+                                    source_name=item.get('source', {}).get('name', 'NewsAPI'),
+                                    published_at=datetime.fromisoformat(item.get('publishedAt', '').replace('Z', '+00:00')) if item.get('publishedAt') else datetime.now(timezone.utc),
+                                    collected_at=datetime.now(timezone.utc),
+                                    sentiment='neutral',
+                                    category=None,
+                                    keywords=[]
+                                )
+
+                                # Save to database (async)
+                                loop.run_until_complete(storage_service.save_article(article))
+
+                                # Add to results
+                                saved_articles.append({
+                                    'id': article.id,
+                                    'title': article.title,
+                                    'source': article.source_name,
+                                    'published': article.published_at.isoformat()[:10] if article.published_at else '',
+                                    'sentiment': 'neutral',
+                                    'summary': article.summary or (article.content[:200] + '...' if article.content else ''),
+                                    'url': article.url,
+                                    'content': article.content or ''
+                                })
+
+                            except Exception as article_error:
+                                logger.warning(f"Error saving article: {str(article_error)}")
+                                continue
+
+                        logger.info(f"Saved {len(saved_articles)} articles from NewsAPI to database")
+                        return saved_articles
                 except Exception as e:
                     logger.warning(f"NewsAPI search failed: {str(e)}")
 
