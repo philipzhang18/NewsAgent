@@ -3,6 +3,7 @@ API endpoints for visualization data.
 """
 
 import logging
+import asyncio
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timezone, timedelta
 
@@ -15,9 +16,19 @@ logger = logging.getLogger(__name__)
 visualization_bp = Blueprint('visualization', __name__, url_prefix='/api/visualization')
 
 
+def run_async(coro):
+    """Helper to run async functions in sync context."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
 @visualization_bp.route('/sentiment/distribution', methods=['GET'])
 @require_rate_limit
-async def get_sentiment_distribution():
+def get_sentiment_distribution():
     """
     Get sentiment distribution data.
 
@@ -30,7 +41,7 @@ async def get_sentiment_distribution():
     try:
         days = int(request.args.get('days', 7))
 
-        fig = await visualization_service.get_sentiment_distribution(days=days)
+        fig = run_async(visualization_service.get_sentiment_distribution(days=days))
 
         return jsonify({
             'success': True,
@@ -48,7 +59,7 @@ async def get_sentiment_distribution():
 
 @visualization_bp.route('/sentiment/timeline', methods=['GET'])
 @require_rate_limit
-async def get_sentiment_timeline():
+def get_sentiment_timeline():
     """
     Get sentiment timeline data.
 
@@ -61,7 +72,7 @@ async def get_sentiment_timeline():
     try:
         days = int(request.args.get('days', 30))
 
-        fig = await visualization_service.get_sentiment_timeline(days=days)
+        fig = run_async(visualization_service.get_sentiment_timeline(days=days))
 
         return jsonify({
             'success': True,
@@ -79,7 +90,7 @@ async def get_sentiment_timeline():
 
 @visualization_bp.route('/sources/distribution', methods=['GET'])
 @require_rate_limit
-async def get_source_distribution():
+def get_source_distribution():
     """
     Get source distribution data.
 
@@ -92,7 +103,7 @@ async def get_source_distribution():
     try:
         days = int(request.args.get('days', 7))
 
-        fig = await visualization_service.get_source_distribution(days=days)
+        fig = run_async(visualization_service.get_source_distribution(days=days))
 
         return jsonify({
             'success': True,
@@ -110,7 +121,7 @@ async def get_source_distribution():
 
 @visualization_bp.route('/collection/trends', methods=['GET'])
 @require_rate_limit
-async def get_collection_trends():
+def get_collection_trends():
     """
     Get collection trends data.
 
@@ -123,7 +134,7 @@ async def get_collection_trends():
     try:
         days = int(request.args.get('days', 30))
 
-        fig = await visualization_service.get_collection_trends(days=days)
+        fig = run_async(visualization_service.get_collection_trends(days=days))
 
         return jsonify({
             'success': True,
@@ -141,7 +152,7 @@ async def get_collection_trends():
 
 @visualization_bp.route('/keywords/frequency', methods=['GET'])
 @require_rate_limit
-async def get_keyword_frequency():
+def get_keyword_frequency():
     """
     Get keyword frequency data.
 
@@ -156,7 +167,7 @@ async def get_keyword_frequency():
         days = int(request.args.get('days', 7))
         top_n = int(request.args.get('top_n', 20))
 
-        fig = await visualization_service.get_keyword_frequency(days=days, top_n=top_n)
+        fig = run_async(visualization_service.get_keyword_frequency(days=days, top_n=top_n))
 
         return jsonify({
             'success': True,
@@ -174,7 +185,7 @@ async def get_keyword_frequency():
 
 @visualization_bp.route('/bias/distribution', methods=['GET'])
 @require_rate_limit
-async def get_bias_distribution():
+def get_bias_distribution():
     """
     Get bias distribution data.
 
@@ -187,7 +198,7 @@ async def get_bias_distribution():
     try:
         days = int(request.args.get('days', 7))
 
-        fig = await visualization_service.get_bias_distribution(days=days)
+        fig = run_async(visualization_service.get_bias_distribution(days=days))
 
         return jsonify({
             'success': True,
@@ -205,7 +216,7 @@ async def get_bias_distribution():
 
 @visualization_bp.route('/processing/statistics', methods=['GET'])
 @require_rate_limit
-async def get_processing_statistics():
+def get_processing_statistics():
     """
     Get processing statistics.
 
@@ -213,7 +224,7 @@ async def get_processing_statistics():
         JSON response with processing statistics
     """
     try:
-        fig = await visualization_service.get_processing_statistics()
+        fig = run_async(visualization_service.get_processing_statistics())
 
         return jsonify({
             'success': True,
