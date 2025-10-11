@@ -20,6 +20,15 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+def run_async(coro):
+    """Helper to run async functions in sync Flask context."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
 def create_app():
     """Create and configure Flask application."""
     app = Flask(__name__)
@@ -73,10 +82,10 @@ def create_app():
         })
 
     @app.route('/api/monitoring/health', methods=['GET'])
-    async def monitoring_health():
+    def monitoring_health():
         """Detailed health check with monitoring service."""
         try:
-            results = await monitoring_service.run_health_checks()
+            results = run_async(monitoring_service.run_health_checks())
             return jsonify({
                 "success": True,
                 "data": results
@@ -89,10 +98,10 @@ def create_app():
             }), 500
 
     @app.route('/api/monitoring/metrics', methods=['GET'])
-    async def monitoring_metrics():
+    def monitoring_metrics():
         """Get system metrics."""
         try:
-            metrics = await monitoring_service.collect_metrics()
+            metrics = run_async(monitoring_service.collect_metrics())
             return jsonify({
                 "success": True,
                 "data": metrics
@@ -121,11 +130,14 @@ def create_app():
             }), 500
     
     @app.route('/api/init', methods=['POST'])
-    async def initialize_service():
+    def initialize_service():
         """Initialize the news collection service."""
         try:
-            await collector_service.initialize()
-            await monitoring_service.start()
+            async def _init():
+                await collector_service.initialize()
+                await monitoring_service.start()
+
+            run_async(_init())
             return jsonify({
                 "success": True,
                 "message": "Service initialized successfully"
@@ -138,14 +150,17 @@ def create_app():
             }), 500
 
     @app.route('/api/start', methods=['POST'])
-    async def start_service():
+    def start_service():
         """Start the news collection service."""
         try:
-            if not collector_service.is_running:
-                await collector_service.initialize()
-                await collector_service.start()
-            if not monitoring_service.is_running:
-                await monitoring_service.start()
+            async def _start():
+                if not collector_service.is_running:
+                    await collector_service.initialize()
+                    await collector_service.start()
+                if not monitoring_service.is_running:
+                    await monitoring_service.start()
+
+            run_async(_start())
             return jsonify({
                 "success": True,
                 "message": "Service started successfully"
@@ -158,13 +173,16 @@ def create_app():
             }), 500
 
     @app.route('/api/stop', methods=['POST'])
-    async def stop_service():
+    def stop_service():
         """Stop the news collection service."""
         try:
-            if collector_service.is_running:
-                await collector_service.stop()
-            if monitoring_service.is_running:
-                await monitoring_service.stop()
+            async def _stop():
+                if collector_service.is_running:
+                    await collector_service.stop()
+                if monitoring_service.is_running:
+                    await monitoring_service.stop()
+
+            run_async(_stop())
             return jsonify({
                 "success": True,
                 "message": "Service stopped successfully"
