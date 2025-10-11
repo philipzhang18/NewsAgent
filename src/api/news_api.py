@@ -85,31 +85,35 @@ def get_articles():
 
 		if settings.NEWS_API_KEY:
 			# 优先使用 NewsAPI
-			params: Dict[str, Any] = {"apiKey": settings.NEWS_API_KEY, "pageSize": min(limit, 100)}
-			endpoint = "https://newsapi.org/v2/top-headlines"
-			if query:
-				endpoint = "https://newsapi.org/v2/everything"
-				params.update({"q": query, "language": "en", "sortBy": "publishedAt"})
-			else:
-				params.update({"country": country})
-				if category:
-					params.update({"category": category})
+			try:
+				params: Dict[str, Any] = {"apiKey": settings.NEWS_API_KEY, "pageSize": min(limit, 100)}
+				endpoint = "https://newsapi.org/v2/top-headlines"
+				if query:
+					endpoint = "https://newsapi.org/v2/everything"
+					params.update({"q": query, "language": "en", "sortBy": "publishedAt"})
+				else:
+					params.update({"country": country})
+					if category:
+						params.update({"category": category})
 
-			resp = requests.get(endpoint, params=params, timeout=60)
-			resp.raise_for_status()
-			data = resp.json()
-			articles = data.get("articles", [])
-			mapped = [_map_newsapi_article(a) for a in articles][:limit]
-			return jsonify({
-				"success": True,
-				"data": {
-					"articles": mapped,
-					"count": len(mapped),
-					"limit": limit
-				}
-			})
+				resp = requests.get(endpoint, params=params, timeout=10)
+				resp.raise_for_status()
+				data = resp.json()
+				articles = data.get("articles", [])
+				mapped = [_map_newsapi_article(a) for a in articles][:limit]
+				return jsonify({
+					"success": True,
+					"data": {
+						"articles": mapped,
+						"count": len(mapped),
+						"limit": limit
+					}
+				})
+			except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, ConnectionResetError) as api_error:
+				logger.warning(f"NewsAPI request failed, falling back to mock data: {str(api_error)}")
+				# Fall through to mock data
 
-		# 未配置 NEWS_API_KEY 时返回示例数据
+		# 未配置 NEWS_API_KEY 或 API 请求失败时返回示例数据
 		mock_articles = [{
 			"id": "1",
 			"title": "示例新闻标题",
