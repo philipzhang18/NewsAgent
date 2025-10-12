@@ -8,6 +8,8 @@ from ..services.news_collector_service import NewsCollectorService
 from ..processors.news_processor import NewsProcessor
 from ..models.news_models import NewsArticle
 from ..config.settings import settings
+from ..services.sqlite_storage_service import sqlite_storage
+from ..services.data_collection_service import data_collection_service
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,11 @@ news_api = Blueprint('news_api', __name__)
 # Initialize services
 collector_service = NewsCollectorService()
 processor = NewsProcessor()
+
+# Initialize SQLite storage
+if not sqlite_storage.is_connected():
+    sqlite_storage.connect()
+    logger.info("SQLite storage initialized")
 
 def run_async(coro):
 	"""Helper to run async functions in sync Flask context."""
@@ -203,7 +210,7 @@ def _map_newsapi_article(item: Dict[str, Any]) -> Dict[str, Any]:
 
 @news_api.route('/articles', methods=['GET'])
 def get_articles():
-	"""Get recent articles with optional filtering. Try collector service first, then NewsAPI."""
+	"""Get recent articles with optional filtering. Try SQLite first, then collector service, then NewsAPI."""
 	try:
 		limit = request.args.get('limit', 50, type=int)
 		query = request.args.get('q')
@@ -211,7 +218,59 @@ def get_articles():
 		category = request.args.get('category')
 		ai_only = request.args.get('ai_only', 'false').lower() == 'true'
 
-		# Try to get articles from collector service first
+		# Try to get articles from SQLite database first
+		if sqlite_storage.is_connected():
+			try:
+				if query:
+					# Use full-text search for query
+					db_articles = run_async(sqlite_storage.search_articles(query, limit=limit))
+				else:
+					# Get articles with optional filters
+					db_articles = run_async(sqlite_storage.get_articles(
+						limit=limit,
+						category=category if category else None
+					))
+
+				if db_articles:
+					# Map database articles to API format
+					mapped = []
+					for article in db_articles:
+						mapped_article = {
+							"id": article.get('id'),
+							"title": article.get('title'),
+							"summary": article.get('summary') or '',
+							"content": article.get('content'),
+							"source": article.get('source_name'),
+							"source_name": article.get('source_name'),
+							"url": article.get('url'),
+							"published_at": article.get('published_at'),
+							"sentiment": article.get('sentiment'),
+							"bias_score": article.get('bias_score'),
+							"category": article.get('category')
+						}
+						mapped.append(mapped_article)
+
+					# Apply AI filter if requested
+					if ai_only:
+						mapped = [a for a in mapped if is_ai_related(a)]
+
+					mapped = mapped[:limit]
+
+					return jsonify({
+						"success": True,
+						"data": {
+							"articles": mapped,
+							"count": len(mapped),
+							"limit": limit,
+							"ai_filtered": ai_only,
+							"source": "local_database"
+						}
+					})
+			except Exception as db_error:
+				logger.warning(f"Error reading from local database: {str(db_error)}")
+				# Fall through to other sources
+
+		# Try to get articles from collector service
 		collected_articles = run_async(collector_service.get_recent_articles(limit=limit))
 
 		def _map_collected_article(article) -> Dict[str, Any]:
@@ -382,10 +441,34 @@ def get_article(article_id: str):
 
 @news_api.route('/collect', methods=['POST'])
 def trigger_collection():
+	"""Trigger news collection from RSS and social media sources."""
 	try:
-		return jsonify({"success": True, "message": "News collection triggered successfully"})
+		logger.info("Manual collection triggered")
+
+		# Run collection asynchronously
+		result = run_async(data_collection_service.collect_all(save_to_db=True))
+
+		return jsonify({
+			"success": True,
+			"message": "News collection completed successfully",
+			"data": result
+		})
 	except Exception as e:
 		logger.error(f"Error triggering collection: {str(e)}")
+		return jsonify({"success": False, "error": str(e)}), 500
+
+@news_api.route('/collection/status', methods=['GET'])
+def get_collection_status():
+	"""Get status of data collection service."""
+	try:
+		status = run_async(data_collection_service.get_collection_status())
+
+		return jsonify({
+			"success": True,
+			"data": status
+		})
+	except Exception as e:
+		logger.error(f"Error getting collection status: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
 
 @news_api.route('/process', methods=['POST'])
