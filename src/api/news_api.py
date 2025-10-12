@@ -11,6 +11,34 @@ from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+def analyze_sentiment(text: str) -> str:
+	"""Analyze sentiment of text using simple keyword-based approach."""
+	if not text:
+		return "neutral"
+
+	text_lower = text.lower()
+
+	# Positive keywords
+	positive_keywords = ['breakthrough', 'success', 'achieve', 'innovative', 'excellent', 'surpass',
+						'advance', 'improve', 'better', 'leading', 'revolutionary', 'powerful',
+						'amazing', 'outstanding', 'milestone']
+
+	# Negative keywords
+	negative_keywords = ['concern', 'worry', 'danger', 'risk', 'threat', 'problem', 'fail',
+						'decline', 'worse', 'controversial', 'crisis', 'issue', 'criticism']
+
+	positive_count = sum(1 for keyword in positive_keywords if keyword in text_lower)
+	negative_count = sum(1 for keyword in negative_keywords if keyword in text_lower)
+
+	if positive_count > negative_count and positive_count > 0:
+		return "positive"
+	elif negative_count > positive_count and negative_count > 0:
+		return "negative"
+	elif positive_count > 0 and negative_count > 0:
+		return "mixed"
+	else:
+		return "neutral"
+
 # Create Blueprint
 news_api = Blueprint('news_api', __name__)
 
@@ -155,6 +183,10 @@ def get_status():
 
 def _map_newsapi_article(item: Dict[str, Any]) -> Dict[str, Any]:
 	"""Map NewsAPI article to frontend schema."""
+	# Analyze sentiment from title and description
+	text_to_analyze = (item.get("title") or "") + " " + (item.get("description") or "")
+	sentiment = analyze_sentiment(text_to_analyze)
+
 	return {
 		"id": item.get("url", ""),
 		"title": item.get("title") or "",
@@ -164,7 +196,7 @@ def _map_newsapi_article(item: Dict[str, Any]) -> Dict[str, Any]:
 		"source_name": (item.get("source") or {}).get("name") or "NewsAPI",
 		"url": item.get("url") or "",
 		"published_at": item.get("publishedAt") or None,
-		"sentiment": "positive",  # 添加示例sentiment
+		"sentiment": sentiment,
 		"bias_score": None,
 		"category": None
 	}
@@ -370,62 +402,127 @@ def get_sources():
 		from datetime import datetime, timedelta
 		import random
 
+		# Get real article data to calculate accurate counts
+		all_articles = run_async(collector_service.get_recent_articles(limit=1000))
+
+		# If no local articles, try NewsAPI
+		if not all_articles and settings.NEWS_API_KEY:
+			try:
+				params = {"apiKey": settings.NEWS_API_KEY, "pageSize": 100, "country": "us"}
+				endpoint = "https://newsapi.org/v2/top-headlines"
+				resp = requests.get(endpoint, params=params, timeout=10)
+				resp.raise_for_status()
+				data = resp.json()
+				articles = data.get("articles", [])
+				all_articles = [_map_newsapi_article(a) for a in articles]
+			except Exception as e:
+				logger.warning(f"Failed to fetch from NewsAPI for sources: {str(e)}")
+
+		# Count articles by source
+		source_counts = {}
+		source_last_updated = {}
+
+		for article in all_articles:
+			source_name = article.get('source_name') if isinstance(article, dict) else article.source_name
+			if source_name:
+				source_counts[source_name] = source_counts.get(source_name, 0) + 1
+
+				# Track last updated time
+				pub_date = article.get('published_at') if isinstance(article, dict) else (article.published_at.isoformat() if article.published_at else None)
+				if pub_date:
+					if source_name not in source_last_updated or pub_date > source_last_updated[source_name]:
+						source_last_updated[source_name] = pub_date
+
 		# Generate dynamic update times
 		now = datetime.utcnow()
 
-		# 返回示例新闻源数据，使用动态时间
-		sources = [
-			{
-				"id": "newsapi",
-				"name": "NewsAPI",
+		# Create sources list with real data
+		sources = []
+
+		# Group sources by type
+		api_sources = {}
+		rss_sources = {}
+		social_sources = {}
+
+		for source_name, count in source_counts.items():
+			# Determine source type based on name
+			if 'newsapi' in source_name.lower() or source_name in ['BBC News', 'CNN', 'Reuters', 'The Guardian']:
+				source_type = "API"
+				source_dict = api_sources
+			elif 'tech' in source_name.lower() or 'business' in source_name.lower():
+				source_type = "RSS"
+				source_dict = rss_sources
+			elif 'twitter' in source_name.lower() or 'reddit' in source_name.lower():
+				source_type = "Social"
+				source_dict = social_sources
+			else:
+				# Default to API type
+				source_type = "API"
+				source_dict = api_sources
+
+			source_dict[source_name] = {
+				"count": count,
+				"last_updated": source_last_updated.get(source_name, now.isoformat() + 'Z')
+			}
+
+		# Add API sources
+		for source_name, info in api_sources.items():
+			source_id = source_name.lower().replace(' ', '_').replace('/', '_')
+			sources.append({
+				"id": source_id,
+				"name": source_name,
 				"type": "API",
 				"url": "https://newsapi.org",
 				"status": "active",
-				"last_updated": (now - timedelta(minutes=random.randint(5, 30))).isoformat() + 'Z',
-				"articles_count": 150,
-				"description": "Global news aggregation API service"
-			},
-			{
-				"id": "rss_tech",
-				"name": "Tech RSS Feeds",
+				"last_updated": info['last_updated'],
+				"articles_count": info['count'],
+				"description": f"{source_name} news aggregation"
+			})
+
+		# Add RSS sources
+		for source_name, info in rss_sources.items():
+			source_id = source_name.lower().replace(' ', '_')
+			sources.append({
+				"id": source_id,
+				"name": source_name,
 				"type": "RSS",
-				"url": "https://feeds.feedburner.com/TechCrunch",
+				"url": "https://feeds.feedburner.com/" + source_name.replace(' ', ''),
 				"status": "active",
-				"last_updated": (now - timedelta(hours=random.randint(1, 3))).isoformat() + 'Z',
-				"articles_count": 45,
-				"description": "Technology news RSS feed"
-			},
-			{
-				"id": "rss_business",
-				"name": "Business RSS Feeds",
-				"type": "RSS",
-				"url": "https://feeds.reuters.com/reuters/businessNews",
-				"status": "active",
-				"last_updated": (now - timedelta(hours=random.randint(2, 5))).isoformat() + 'Z',
-				"articles_count": 32,
-				"description": "Business news RSS feed"
-			},
-			{
-				"id": "twitter_x",
-				"name": "Twitter/X",
+				"last_updated": info['last_updated'],
+				"articles_count": info['count'],
+				"description": f"{source_name} RSS feed"
+			})
+
+		# Add Social sources
+		for source_name, info in social_sources.items():
+			source_id = source_name.lower().replace(' ', '_').replace('/', '_')
+			url = "https://twitter.com" if 'twitter' in source_name.lower() else "https://www.reddit.com/r/news"
+			sources.append({
+				"id": source_id,
+				"name": source_name,
 				"type": "Social",
-				"url": "https://twitter.com",
+				"url": url,
 				"status": "active",
-				"last_updated": (now - timedelta(minutes=random.randint(10, 45))).isoformat() + 'Z',
-				"articles_count": 67,
-				"description": "Twitter/X social media platform"
-			},
-			{
-				"id": "reddit_news",
-				"name": "Reddit News",
-				"type": "Social",
-				"url": "https://www.reddit.com/r/news",
-				"status": "active",
-				"last_updated": (now - timedelta(minutes=random.randint(15, 60))).isoformat() + 'Z',
-				"articles_count": 78,
-				"description": "Reddit news aggregation"
-			}
-		]
+				"last_updated": info['last_updated'],
+				"articles_count": info['count'],
+				"description": f"{source_name} social media platform"
+			})
+
+		# If no sources found, return default mock data
+		if not sources:
+			sources = [
+				{
+					"id": "newsapi",
+					"name": "NewsAPI",
+					"type": "API",
+					"url": "https://newsapi.org",
+					"status": "active",
+					"last_updated": now.isoformat() + 'Z',
+					"articles_count": 0,
+					"description": "Global news aggregation API service"
+				}
+			]
+
 		return jsonify({"success": True, "data": sources})
 	except Exception as e:
 		logger.error(f"Error getting sources: {str(e)}")
@@ -435,66 +532,16 @@ def get_sources():
 def get_source(source_id: str):
 	"""Get specific source details."""
 	try:
-		from datetime import datetime, timedelta
-		import random
+		# Get all sources first
+		sources_response = get_sources()
+		sources_data = sources_response.get_json()
 
-		# Generate dynamic update times
-		now = datetime.utcnow()
+		if not sources_data.get('success'):
+			return jsonify({"success": False, "error": "Failed to fetch sources"}), 500
 
-		# 返回示例源数据
-		sources = [
-			{
-				"id": "newsapi",
-				"name": "NewsAPI",
-				"type": "API",
-				"url": "https://newsapi.org",
-				"status": "active",
-				"last_updated": (now - timedelta(minutes=random.randint(5, 30))).isoformat() + 'Z',
-				"articles_count": 150,
-				"description": "Global news aggregation API service"
-			},
-			{
-				"id": "rss_tech",
-				"name": "Tech RSS Feeds",
-				"type": "RSS",
-				"url": "https://feeds.feedburner.com/TechCrunch",
-				"status": "active",
-				"last_updated": (now - timedelta(hours=random.randint(1, 3))).isoformat() + 'Z',
-				"articles_count": 45,
-				"description": "Technology news RSS feed"
-			},
-			{
-				"id": "rss_business",
-				"name": "Business RSS Feeds",
-				"type": "RSS",
-				"url": "https://feeds.reuters.com/reuters/businessNews",
-				"status": "active",
-				"last_updated": (now - timedelta(hours=random.randint(2, 5))).isoformat() + 'Z',
-				"articles_count": 32,
-				"description": "Business news RSS feed"
-			},
-			{
-				"id": "twitter_x",
-				"name": "Twitter/X",
-				"type": "Social",
-				"url": "https://twitter.com",
-				"status": "active",
-				"last_updated": (now - timedelta(minutes=random.randint(10, 45))).isoformat() + 'Z',
-				"articles_count": 67,
-				"description": "Twitter/X social media platform"
-			},
-			{
-				"id": "reddit_news",
-				"name": "Reddit News",
-				"type": "Social",
-				"url": "https://www.reddit.com/r/news",
-				"status": "active",
-				"last_updated": (now - timedelta(minutes=random.randint(15, 60))).isoformat() + 'Z',
-				"articles_count": 78,
-				"description": "Reddit news aggregation"
-			}
-		]
+		sources = sources_data.get('data', [])
 
+		# Find the requested source
 		source = next((s for s in sources if s["id"] == source_id), None)
 		if not source:
 			return jsonify({"success": False, "error": "Source not found"}), 404
@@ -603,65 +650,16 @@ def delete_source(source_id: str):
 def test_source(source_id: str):
 	"""Test a news source connection and functionality."""
 	try:
-		# 获取源信息
-		sources = [
-			{
-				"id": "newsapi",
-				"name": "NewsAPI",
-				"type": "API",
-				"url": "https://newsapi.org",
-				"status": "active",
-				"last_updated": "2025-09-23T10:15:00Z",
-				"articles_count": 150,
-				"description": "Global news aggregation API service"
-			},
-			{
-				"id": "rss_tech",
-				"name": "Tech RSS Feeds",
-				"type": "RSS",
-				"url": "https://feeds.feedburner.com/TechCrunch",
-				"status": "active",
-				"last_updated": "2025-09-23T09:15:00Z",
-				"articles_count": 45,
-				"description": "Technology news RSS feed"
-			},
-			{
-				"id": "rss_business",
-				"name": "Business RSS Feeds",
-				"type": "RSS",
-				"url": "https://feeds.reuters.com/reuters/businessNews",
-				"status": "active",
-				"last_updated": "2025-09-23T08:45:00Z",
-				"articles_count": 32,
-				"description": "Business news RSS feed"
-			},
-			{
-				"id": "twitter_x",
-				"name": "Twitter/X",
-				"type": "Social",
-				"url": "https://twitter.com",
-				"status": "active",
-				"last_updated": "2025-09-23T10:12:00Z",
-				"articles_count": 67,
-				"description": "Twitter/X social media platform"
-			},
-			{
-				"id": "reddit_news",
-				"name": "Reddit News",
-				"type": "Social",
-				"url": "https://www.reddit.com/r/news",
-				"status": "active",
-				"last_updated": "2025-09-23T10:05:00Z",
-				"articles_count": 78,
-				"description": "Reddit news aggregation"
-			}
-		]
+		# Get source information from dynamic sources
+		source_response = get_source(source_id)
+		source_data = source_response.get_json()
 
-		source = next((s for s in sources if s["id"] == source_id), None)
-		if not source:
+		if not source_data.get('success'):
 			return jsonify({"success": False, "error": "Source not found"}), 404
 
-		# 模拟测试不同类型的源
+		source = source_data.get('data')
+
+		# Simulate testing different types of sources
 		if source["type"] == "API":
 			test_result = {
 				"success": True,
@@ -669,7 +667,7 @@ def test_source(source_id: str):
 				"details": {
 					"response_time": "245ms",
 					"status_code": 200,
-					"available_articles": 150,
+					"available_articles": source.get('articles_count', 0),
 					"rate_limit_remaining": 450
 				}
 			}
@@ -680,33 +678,21 @@ def test_source(source_id: str):
 				"details": {
 					"response_time": "312ms",
 					"feed_valid": True,
-					"articles_found": 25,
-					"last_updated": "2025-09-23T08:45:00Z"
+					"articles_found": source.get('articles_count', 0),
+					"last_updated": source.get('last_updated', '')
 				}
 			}
 		elif source["type"] == "Social":
-			if source_id == "twitter_x":
-				test_result = {
-					"success": True,
-					"message": f"Twitter/X API test successful for {source['name']}",
-					"details": {
-						"response_time": "189ms",
-						"api_status": "operational",
-						"tweets_accessible": True,
-						"rate_limit_remaining": 100
-					}
+			test_result = {
+				"success": True,
+				"message": f"Social media API test successful for {source['name']}",
+				"details": {
+					"response_time": "189ms",
+					"api_status": "operational",
+					"content_accessible": True,
+					"rate_limit_remaining": 100
 				}
-			else:
-				test_result = {
-					"success": True,
-					"message": f"Social media API test successful for {source['name']}",
-					"details": {
-						"response_time": "203ms",
-						"api_status": "operational",
-						"posts_accessible": True,
-						"rate_limit_remaining": 75
-					}
-				}
+			}
 		else:
 			test_result = {
 				"success": False,
