@@ -294,7 +294,7 @@ def get_articles():
 						"source": "newsapi"
 					}
 				})
-			except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, ConnectionResetError) as api_error:
+			except Exception as api_error:
 				logger.warning(f"NewsAPI request failed, falling back to mock data: {str(api_error)}")
 				# Fall through to mock data
 
@@ -520,6 +520,46 @@ def get_sources():
 					"last_updated": now.isoformat() + 'Z',
 					"articles_count": 0,
 					"description": "Global news aggregation API service"
+				},
+				{
+					"id": "rss_tech",
+					"name": "Tech RSS Feeds",
+					"type": "RSS",
+					"url": "https://feeds.feedburner.com/TechCrunch",
+					"status": "active",
+					"last_updated": now.isoformat() + 'Z',
+					"articles_count": 0,
+					"description": "Technology news RSS feed"
+				},
+				{
+					"id": "rss_business",
+					"name": "Business RSS Feeds",
+					"type": "RSS",
+					"url": "https://feeds.reuters.com/reuters/businessNews",
+					"status": "active",
+					"last_updated": now.isoformat() + 'Z',
+					"articles_count": 0,
+					"description": "Business news RSS feed"
+				},
+				{
+					"id": "twitter_x",
+					"name": "Twitter/X",
+					"type": "Social",
+					"url": "https://twitter.com",
+					"status": "active",
+					"last_updated": now.isoformat() + 'Z',
+					"articles_count": 0,
+					"description": "Twitter/X social media platform"
+				},
+				{
+					"id": "reddit_news",
+					"name": "Reddit News",
+					"type": "Social",
+					"url": "https://www.reddit.com/r/news",
+					"status": "active",
+					"last_updated": now.isoformat() + 'Z',
+					"articles_count": 0,
+					"description": "Reddit news aggregation"
 				}
 			]
 
