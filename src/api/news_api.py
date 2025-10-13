@@ -86,9 +86,28 @@ def get_status():
 		# Get real status from collector service
 		status = run_async(collector_service.get_collection_status())
 
-		# Get articles to determine actual status
-		all_articles = run_async(collector_service.get_recent_articles(limit=1000))
-		total_articles = len(all_articles)
+		# Get articles from database to determine actual status
+		try:
+			# Try database first for accurate count
+			db_articles = run_async(sqlite_storage.get_articles(limit=10000))
+			total_articles = len(db_articles)
+			# Convert dict articles to object-like structure
+			class ArticleObj:
+				def __init__(self, data):
+					self.source_name = data.get('source_name')
+					self.published_at = data.get('published_at')
+					if isinstance(self.published_at, str):
+						try:
+							from dateutil import parser
+							self.published_at = parser.parse(self.published_at)
+						except:
+							pass
+			all_articles = [ArticleObj(a) for a in db_articles]
+		except Exception as e:
+			logger.warning(f"Failed to read from database: {e}, falling back to collector service")
+			# Fallback to collector service
+			all_articles = run_async(collector_service.get_recent_articles(limit=1000))
+			total_articles = len(all_articles)
 
 		# Count source distribution from articles
 		source_distribution = {}
@@ -485,21 +504,23 @@ def get_sources():
 		from datetime import datetime, timedelta
 		import random
 
-		# Get real article data to calculate accurate counts
-		all_articles = run_async(collector_service.get_recent_articles(limit=1000))
+		# Get configured sources from data_collection_service
+		configured_sources = data_collection_service.sources
 
-		# If no local articles, try NewsAPI
-		if not all_articles and settings.NEWS_API_KEY:
-			try:
-				params = {"apiKey": settings.NEWS_API_KEY, "pageSize": 100, "country": "us"}
-				endpoint = "https://newsapi.org/v2/top-headlines"
-				resp = requests.get(endpoint, params=params, timeout=10)
-				resp.raise_for_status()
-				data = resp.json()
-				articles = data.get("articles", [])
-				all_articles = [_map_newsapi_article(a) for a in articles]
-			except Exception as e:
-				logger.warning(f"Failed to fetch from NewsAPI for sources: {str(e)}")
+		# Get real article data to calculate accurate counts
+		try:
+			# Try database first for accurate count
+			db_articles = run_async(sqlite_storage.get_articles(limit=10000))
+		except Exception as e:
+			logger.warning(f"Failed to read from database: {e}")
+			# Fallback to collector service
+			db_articles = []
+
+		# If no database articles, try collector service
+		if not db_articles:
+			all_articles = run_async(collector_service.get_recent_articles(limit=1000))
+		else:
+			all_articles = db_articles
 
 		# Count articles by source
 		source_counts = {}
@@ -519,79 +540,45 @@ def get_sources():
 		# Generate dynamic update times
 		now = datetime.utcnow()
 
-		# Create sources list with real data
+		# Create sources list from configured sources
 		sources = []
 
-		# Group sources by type
-		api_sources = {}
-		rss_sources = {}
-		social_sources = {}
+		for source in configured_sources:
+			source_id = source.name.lower().replace(' ', '_').replace('/', '_')
 
-		for source_name, count in source_counts.items():
-			# Determine source type based on name
-			if 'newsapi' in source_name.lower() or source_name in ['BBC News', 'CNN', 'Reuters', 'The Guardian']:
-				source_type = "API"
-				source_dict = api_sources
-			elif 'tech' in source_name.lower() or 'business' in source_name.lower():
+			# Determine type badge
+			if source.source_type.value == 'rss':
 				source_type = "RSS"
-				source_dict = rss_sources
-			elif 'twitter' in source_name.lower() or 'reddit' in source_name.lower():
-				source_type = "Social"
-				source_dict = social_sources
-			else:
-				# Default to API type
+			elif source.source_type.value == 'api':
 				source_type = "API"
-				source_dict = api_sources
+			elif source.source_type.value == 'social_media':
+				source_type = "Social"
+			else:
+				source_type = "API"
 
-			source_dict[source_name] = {
-				"count": count,
-				"last_updated": source_last_updated.get(source_name, now.isoformat() + 'Z')
-			}
+			# Find matching article count
+			article_count = 0
+			last_updated = now.isoformat() + 'Z'
 
-		# Add API sources
-		for source_name, info in api_sources.items():
-			source_id = source_name.lower().replace(' ', '_').replace('/', '_')
+			# Try to match by source name in articles
+			for src_name, count in source_counts.items():
+				if source.name.lower() in src_name.lower() or src_name.lower() in source.name.lower():
+					article_count = count
+					last_updated = source_last_updated.get(src_name, last_updated)
+					break
+
 			sources.append({
 				"id": source_id,
-				"name": source_name,
-				"type": "API",
-				"url": "https://newsapi.org",
-				"status": "active",
-				"last_updated": info['last_updated'],
-				"articles_count": info['count'],
-				"description": f"{source_name} news aggregation"
+				"name": source.name,
+				"type": source_type,
+				"url": source.url,
+				"status": "active" if source.is_active else "inactive",
+				"last_updated": last_updated,
+				"articles_count": article_count,
+				"description": f"{source.name} - {source_type} news source"
 			})
 
-		# Add RSS sources
-		for source_name, info in rss_sources.items():
-			source_id = source_name.lower().replace(' ', '_')
-			sources.append({
-				"id": source_id,
-				"name": source_name,
-				"type": "RSS",
-				"url": "https://feeds.feedburner.com/" + source_name.replace(' ', ''),
-				"status": "active",
-				"last_updated": info['last_updated'],
-				"articles_count": info['count'],
-				"description": f"{source_name} RSS feed"
-			})
-
-		# Add Social sources
-		for source_name, info in social_sources.items():
-			source_id = source_name.lower().replace(' ', '_').replace('/', '_')
-			url = "https://twitter.com" if 'twitter' in source_name.lower() else "https://www.reddit.com/r/news"
-			sources.append({
-				"id": source_id,
-				"name": source_name,
-				"type": "Social",
-				"url": url,
-				"status": "active",
-				"last_updated": info['last_updated'],
-				"articles_count": info['count'],
-				"description": f"{source_name} social media platform"
-			})
-
-		# If no sources found, return default mock data
+		# If no configured sources, return default mock data
 		if not sources:
 			sources = [
 				{
@@ -613,16 +600,6 @@ def get_sources():
 					"last_updated": now.isoformat() + 'Z',
 					"articles_count": 0,
 					"description": "Technology news RSS feed"
-				},
-				{
-					"id": "rss_business",
-					"name": "Business RSS Feeds",
-					"type": "RSS",
-					"url": "https://feeds.reuters.com/reuters/businessNews",
-					"status": "active",
-					"last_updated": now.isoformat() + 'Z',
-					"articles_count": 0,
-					"description": "Business news RSS feed"
 				},
 				{
 					"id": "twitter_x",
@@ -843,11 +820,33 @@ def get_stats():
 		# Get real status from collector service
 		status = run_async(collector_service.get_collection_status())
 
-		# Get all articles from collector service
-		all_articles = run_async(collector_service.get_recent_articles(limit=1000))
-
-		# Calculate article statistics
-		total_articles = len(all_articles)
+		# Get all articles from database first, then fallback to collector service
+		try:
+			# Try database first for accurate count
+			db_articles = run_async(sqlite_storage.get_articles(limit=10000))
+			total_articles = len(db_articles)
+			# Convert dict articles to object-like structure
+			class ArticleObj:
+				def __init__(self, data):
+					self.id = data.get('id')
+					self.source_name = data.get('source_name')
+					self.published_at = data.get('published_at')
+					self.sentiment = type('obj', (object,), {'value': data.get('sentiment')})() if data.get('sentiment') else None
+					self.title = data.get('title', '')
+					self.summary = data.get('summary', '')
+					self.content = data.get('content', '')
+					if isinstance(self.published_at, str):
+						try:
+							from dateutil import parser
+							self.published_at = parser.parse(self.published_at)
+						except:
+							pass
+			all_articles = [ArticleObj(a) for a in db_articles]
+		except Exception as e:
+			logger.warning(f"Failed to read from database for stats: {e}, falling back to collector service")
+			# Fallback to collector service
+			all_articles = run_async(collector_service.get_recent_articles(limit=1000))
+			total_articles = len(all_articles)
 
 		# Count sentiment distribution
 		sentiment_distribution = {

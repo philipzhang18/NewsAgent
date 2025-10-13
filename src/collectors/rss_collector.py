@@ -33,13 +33,21 @@ class RSSCollector(BaseCollector):
         """Collect news from RSS feed."""
         try:
             logger.info(f"Collecting news from RSS feed: {self.source.url}")
-            
+
             # Parse RSS feed
             feed = self.feed_parser.parse(self.source.url)
-            
+
             if feed.status != 200:
                 raise Exception(f"RSS feed returned status {feed.status}")
-            
+
+            # Extract actual feed title for source name
+            feed_title = feed.feed.get('title', self.source.name)
+            if feed_title and feed_title != self.source.name:
+                logger.info(f"Using feed title as source name: {feed_title}")
+                # Temporarily override source name with actual feed title
+                original_name = self.source.name
+                self.source.name = feed_title
+
             articles = []
             for entry in feed.entries[:self.source.max_articles]:
                 try:
@@ -49,10 +57,10 @@ class RSSCollector(BaseCollector):
                 except Exception as e:
                     logger.warning(f"Error parsing RSS entry: {str(e)}")
                     continue
-            
+
             logger.info(f"Successfully parsed {len(articles)} articles from RSS feed")
             return articles
-            
+
         except Exception as e:
             logger.error(f"Error collecting from RSS feed {self.source.url}: {str(e)}")
             return []

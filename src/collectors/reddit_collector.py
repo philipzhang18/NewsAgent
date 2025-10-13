@@ -243,28 +243,12 @@ class RedditCollector(BaseCollector):
                 title=title,
                 content=content,
                 summary=summary,
-                source=self.source.name,
                 source_name=f"Reddit/r/{subreddit_name}",
                 url=url,
                 published_at=published_at,
                 collected_at=datetime.now(timezone.utc),
                 tags=[subreddit_name],
-                category=category,
-                metadata={
-                    "platform": "reddit",
-                    "subreddit": subreddit_name,
-                    "author": author,
-                    "score": submission.score,
-                    "upvote_ratio": submission.upvote_ratio,
-                    "num_comments": submission.num_comments,
-                    "is_self_post": submission.is_self,
-                    "is_video": submission.is_video,
-                    "over_18": submission.over_18,
-                    "spoiler": submission.spoiler,
-                    "stickied": submission.stickied,
-                    "permalink": f"https://reddit.com{submission.permalink}",
-                    "submission_id": submission.id
-                }
+                category=category
             )
 
             return article

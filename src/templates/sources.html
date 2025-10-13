@@ -15,7 +15,7 @@
 
     <!-- Statistics Cards -->
     <div class="row mb-4">
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card stats-card h-100">
                 <div class="card-body text-center">
                     <i class="fas fa-globe fa-2x mb-2"></i>
@@ -24,7 +24,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card stats-card h-100">
                 <div class="card-body text-center">
                     <i class="fas fa-check-circle fa-2x mb-2"></i>
@@ -33,7 +33,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card stats-card h-100">
                 <div class="card-body text-center">
                     <i class="fas fa-rss fa-2x mb-2"></i>
@@ -42,12 +42,30 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card stats-card h-100">
                 <div class="card-body text-center">
                     <i class="fas fa-cloud fa-2x mb-2"></i>
                     <div class="stats-number" id="apiSources">-</div>
                     <div>API源</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stats-card h-100">
+                <div class="card-body text-center">
+                    <i class="fab fa-twitter fa-2x mb-2"></i>
+                    <div class="stats-number" id="socialSources">-</div>
+                    <div>社交媒体</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stats-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-database fa-2x mb-2"></i>
+                    <div class="stats-number" id="totalArticles">-</div>
+                    <div>本地文章</div>
                 </div>
             </div>
         </div>
@@ -204,11 +222,17 @@ function updateSourcesStats(sources) {
     const activeSources = sources.filter(s => s.status === 'active').length;
     const rssSources = sources.filter(s => s.type === 'RSS').length;
     const apiSources = sources.filter(s => s.type === 'API').length;
+    const socialSources = sources.filter(s => s.type === 'Social').length;
+
+    // Calculate total articles from all sources
+    const totalArticles = sources.reduce((sum, s) => sum + (s.articles_count || 0), 0);
 
     document.getElementById('totalSources').textContent = totalSources;
     document.getElementById('activeSources').textContent = activeSources;
     document.getElementById('rssSources').textContent = rssSources;
     document.getElementById('apiSources').textContent = apiSources;
+    document.getElementById('socialSources').textContent = socialSources;
+    document.getElementById('totalArticles').textContent = totalArticles;
 }
 
 function displaySources(sources) {

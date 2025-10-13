@@ -100,10 +100,15 @@ class TwitterCollector(BaseCollector):
             return False
 
         try:
-            # Test API access by getting authenticated user
-            me = self.client.get_me()
-            if me and me.data:
-                logger.info(f"Twitter API access validated for user: @{me.data.username}")
+            # Test API access by doing a simple search
+            # Bearer Token can do searches without user context
+            test_response = self.client.search_recent_tweets(
+                query="news",
+                max_results=10
+            )
+
+            if test_response:
+                logger.info("Twitter API access validated successfully")
                 return True
             else:
                 logger.error("Failed to validate Twitter API access")
@@ -321,24 +326,12 @@ class TwitterCollector(BaseCollector):
                 title=f"Tweet by @{author_name}: {content[:100]}...",
                 content=content,
                 summary=content[:200] if len(content) > 200 else content,
-                source=self.source.name,
                 source_name=f"Twitter/@{author_name}",
                 url=url,
                 published_at=published_at,
                 collected_at=datetime.now(timezone.utc),
                 tags=tags,
-                category="social_media",
-                metadata={
-                    "platform": "twitter",
-                    "author": author_name,
-                    "author_display_name": author_display_name,
-                    "verified": author.verified if author and hasattr(author, 'verified') else False,
-                    "likes": likes,
-                    "retweets": retweets,
-                    "replies": replies,
-                    "query": query,
-                    "tweet_id": str(tweet.id)
-                }
+                category="social_media"
             )
 
             return article
