@@ -665,26 +665,50 @@ def update_source(source_id: str):
 			if not data.get(field):
 				return jsonify({"success": False, "error": f"Missing required field: {field}"}), 400
 
-		# 模拟更新源
-		logger.info(f"Updating source {source_id} with data: {data}")
+		# Update the source in data_collection_service
+		updated = data_collection_service.update_source(
+			source_id=source_id,
+			name=data.get('name'),
+			url=data.get('url'),
+			status=data.get('status', 'active')
+		)
 
-		# 返回更新后的源数据
-		updated_source = {
-			"id": source_id,
-			"name": data.get("name"),
-			"type": data.get("type"),
-			"url": data.get("url"),
-			"status": data.get("status", "active"),
-			"description": data.get("description", ""),
-			"last_updated": "2025-09-23T10:20:00Z",
-			"articles_count": 0
-		}
+		if updated:
+			logger.info(f"Successfully updated source {source_id}")
+
+			# Get the updated source
+			updated_source = data_collection_service.get_source_by_id(source_id)
+			if updated_source:
+				# Determine type badge
+				if updated_source.source_type.value == 'rss':
+					source_type = "RSS"
+				elif updated_source.source_type.value == 'api':
+					source_type = "API"
+				elif updated_source.source_type.value == 'social_media':
+					source_type = "Social"
+				else:
+					source_type = "API"
+
+				return jsonify({
+					"success": True,
+					"message": "Source updated successfully",
+					"data": {
+						"id": source_id,
+						"name": updated_source.name,
+						"type": source_type,
+						"url": updated_source.url,
+						"status": "active" if updated_source.is_active else "inactive",
+						"description": data.get("description", f"{updated_source.name} - {source_type} news source"),
+						"last_updated": datetime.utcnow().isoformat() + 'Z',
+						"articles_count": 0
+					}
+				})
 
 		return jsonify({
-			"success": True,
-			"message": "Source updated successfully",
-			"data": updated_source
-		})
+			"success": False,
+			"error": "Source not found"
+		}), 404
+
 	except Exception as e:
 		logger.error(f"Error updating source {source_id}: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
@@ -820,7 +844,8 @@ def get_stats():
 		# Get real status from collector service
 		status = run_async(collector_service.get_collection_status())
 
-		# Get all articles from database first, then fallback to collector service
+		# ALWAYS try to get articles from database first for accurate count
+		# This ensures we count only what's actually stored locally
 		try:
 			# Try database first for accurate count
 			db_articles = run_async(sqlite_storage.get_articles(limit=10000))
@@ -842,11 +867,13 @@ def get_stats():
 						except:
 							pass
 			all_articles = [ArticleObj(a) for a in db_articles]
+			data_source = "database"
 		except Exception as e:
 			logger.warning(f"Failed to read from database for stats: {e}, falling back to collector service")
 			# Fallback to collector service
 			all_articles = run_async(collector_service.get_recent_articles(limit=1000))
 			total_articles = len(all_articles)
+			data_source = "collector_service"
 
 		# Count sentiment distribution
 		sentiment_distribution = {
@@ -882,63 +909,6 @@ def get_stats():
 			if is_ai_related(article_dict):
 				ai_articles_count += 1
 
-		# If no articles from collector, use NewsAPI or mock data
-		if total_articles == 0:
-			# Try to get count from NewsAPI
-			if settings.NEWS_API_KEY:
-				try:
-					params = {"apiKey": settings.NEWS_API_KEY, "pageSize": 100, "country": "us"}
-					endpoint = "https://newsapi.org/v2/top-headlines"
-					resp = requests.get(endpoint, params=params, timeout=10)
-					resp.raise_for_status()
-					data = resp.json()
-					articles = data.get("articles", [])
-					total_articles = len(articles)
-
-					# Calculate sentiment and source from NewsAPI articles
-					for article_data in articles:
-						mapped = _map_newsapi_article(article_data)
-						sentiment = mapped.get('sentiment', 'neutral')
-						if sentiment in sentiment_distribution:
-							sentiment_distribution[sentiment] += 1
-
-						source_name = mapped.get('source_name', 'Unknown')
-						source_distribution[source_name] = source_distribution.get(source_name, 0) + 1
-
-						if is_ai_related(mapped):
-							ai_articles_count += 1
-				except Exception as e:
-					logger.warning(f"Failed to fetch from NewsAPI: {str(e)}")
-					# Use mock data
-					total_articles = 25
-					ai_articles_count = 8
-					sentiment_distribution = {
-						"positive": 12,
-						"negative": 3,
-						"neutral": 8,
-						"mixed": 2
-					}
-					source_distribution = {
-						"NewsAPI": 15,
-						"RSS Feed": 7,
-						"Reddit": 3
-					}
-			else:
-				# Use mock data
-				total_articles = 25
-				ai_articles_count = 8
-				sentiment_distribution = {
-					"positive": 12,
-					"negative": 3,
-					"neutral": 8,
-					"mixed": 2
-				}
-				source_distribution = {
-					"NewsAPI": 15,
-					"RSS Feed": 7,
-					"Reddit": 3
-				}
-
 		# Calculate active sources and last collection time
 		active_sources = len(source_distribution)
 
@@ -950,10 +920,10 @@ def get_stats():
 				latest_article = max(articles_with_dates, key=lambda a: a.published_at)
 				last_collection = latest_article.published_at.isoformat() + 'Z'
 
-		# Override collection_stats with actual article counts
+		# Use actual article counts from database/collector service
 		collection_stats = {
 			"total_collections": active_sources,  # Number of active sources
-			"total_articles": total_articles,  # Actual article count
+			"total_articles": total_articles,  # Actual article count from database
 			"successful_collections": active_sources,  # Assume all sources successful if we have data
 			"last_collection": last_collection,
 			"failed_collections": 0
@@ -972,7 +942,7 @@ def get_stats():
 			"database_stats": {
 				"stored_articles": total_articles,
 				"unique_sources": active_sources,
-				"data_source": "newsapi" if total_articles > 0 else "none"
+				"data_source": data_source
 			}
 		}
 

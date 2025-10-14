@@ -1,0 +1,36 @@
+{
+  "rss_sources": [
+    {
+      "name": "BBC News",
+      "url": "http://feeds.bbci.co.uk/news/rss.xml",
+      "max_articles": 50,
+      "is_active": true
+    },
+    {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/world/rss",
+      "max_articles": 50,
+      "is_active": true
+    },
+    {
+      "name": "Al Jazeera",
+      "url": "https://www.aljazeera.com/xml/rss/all.xml",
+      "max_articles": 50,
+      "is_active": true
+    },
+    {
+      "name": "CNN",
+      "url": "http://rss.cnn.com/rss/edition.rss",
+      "max_articles": 50,
+      "is_active": true
+    },
+    {
+      "name": "Reuters",
+      "url": "https://www.reuters.com/rssFeed/worldNews",
+      "max_articles": 50,
+      "is_active": true
+    }
+  ],
+  "api_sources": [],
+  "social_sources": []
+}

@@ -364,6 +364,7 @@ async function loadDatabaseStatus() {
 
         if (data.success && data.data.database_stats) {
             const dbStats = data.data.database_stats;
+            const sourceDistribution = data.data.article_stats.source_distribution;
             const content = document.getElementById('databaseStatusContent');
 
             let statusHtml = `
@@ -385,8 +386,8 @@ async function loadDatabaseStatus() {
                     <div class="col-md-4">
                         <div class="p-3">
                             <i class="fas fa-plug fa-3x text-info mb-2"></i>
-                            <h3 class="mb-1">${dbStats.data_source.toUpperCase()}</h3>
-                            <small class="text-muted">Data Source</small>
+                            <h3 class="mb-1">${dbStats.unique_sources > 0 ? 'MULTIPLE' : 'NONE'}</h3>
+                            <small class="text-muted">Data Sources</small>
                         </div>
                     </div>
                 </div>
@@ -394,13 +395,33 @@ async function loadDatabaseStatus() {
                 <div class="alert alert-info mb-0">
                     <i class="fas fa-info-circle"></i>
                     <strong>Data Source Information:</strong>
-                    ${dbStats.data_source === 'newsapi' ?
-                        'Articles are being fetched from NewsAPI and stored locally.' :
-                        'No articles found. Please configure your data sources.'}
+                    <div id="dataSourceDetails"></div>
                 </div>
             `;
 
             content.innerHTML = statusHtml;
+
+            // Update data source details with actual source names
+            const detailsDiv = document.getElementById('dataSourceDetails');
+            if (dbStats.stored_articles > 0 && sourceDistribution) {
+                const sourceNames = Object.keys(sourceDistribution);
+                const sourceCounts = Object.entries(sourceDistribution)
+                    .map(([name, count]) => `${name} (${count})`)
+                    .join(', ');
+
+                if (sourceNames.length > 0) {
+                    detailsDiv.innerHTML = `
+                        <div class="mt-2">
+                            Articles are being collected from ${sourceNames.length} source(s): ${sourceCounts}.
+                            All data is stored locally in SQLite database.
+                        </div>
+                    `;
+                } else {
+                    detailsDiv.innerHTML = 'Articles stored locally, source information not available.';
+                }
+            } else {
+                detailsDiv.innerHTML = 'No articles found. Please configure your data sources and run a collection.';
+            }
         }
     } catch (error) {
         console.error('Error loading database status:', error);

@@ -40,13 +40,9 @@ class RSSCollector(BaseCollector):
             if feed.status != 200:
                 raise Exception(f"RSS feed returned status {feed.status}")
 
-            # Extract actual feed title for source name
-            feed_title = feed.feed.get('title', self.source.name)
-            if feed_title and feed_title != self.source.name:
-                logger.info(f"Using feed title as source name: {feed_title}")
-                # Temporarily override source name with actual feed title
-                original_name = self.source.name
-                self.source.name = feed_title
+            # Use the configured source name (from data_collection_service)
+            # Do not override with feed title to maintain consistency
+            logger.info(f"Collecting articles from source: {self.source.name}")
 
             articles = []
             for entry in feed.entries[:self.source.max_articles]:
