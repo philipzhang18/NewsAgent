@@ -78,9 +78,13 @@ class NewsAPICollector(BaseCollector):
         try:
             # Get configuration from source
             max_articles = getattr(self.source, 'max_articles', 100)
-            country = getattr(self.source, 'country', 'us')
+            country = getattr(self.source, 'country', None)
             category = getattr(self.source, 'category', None)
             query = getattr(self.source, 'query', None)
+
+            # Ensure country has a valid default value if not specified
+            if not country and not query:
+                country = 'us'  # Default to US if no country or query specified
 
             if query:
                 # Use 'everything' endpoint for search queries
@@ -127,14 +131,20 @@ class NewsAPICollector(BaseCollector):
             url = f"{self.base_url}/top-headlines"
             params = {
                 "apiKey": self.api_key,
-                "country": country,
                 "pageSize": min(max_articles, 100)  # NewsAPI max is 100
             }
+
+            # Add country parameter (required if no sources or q specified)
+            if country:
+                params["country"] = country
+            else:
+                # If no country specified, default to 'us'
+                params["country"] = "us"
 
             if category:
                 params["category"] = category
 
-            logger.info(f"Fetching top headlines from NewsAPI (country={country}, category={category})")
+            logger.info(f"Fetching top headlines from NewsAPI (country={params.get('country')}, category={category})")
 
             response = requests.get(url, params=params, timeout=15)
             response.raise_for_status()

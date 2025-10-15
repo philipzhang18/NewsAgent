@@ -89,21 +89,47 @@
 </div>
 
 <div class="row">
-    <!-- Service Status -->
+    <!-- Quick Actions & API Status -->
     <div class="col-lg-12 mb-4">
-        <div class="card">
-            <div class="card-header">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
                 <h5 class="mb-0">
-                    <i class="fas fa-server"></i> Service Status
+                    <i class="fas fa-bolt"></i> Quick Actions & API Status
                 </h5>
             </div>
             <div class="card-body">
-                <div id="serviceStatusContent">
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
+                <div class="row">
+                    <!-- Quick Actions -->
+                    <div class="col-lg-6 border-end">
+                        <h6 class="mb-3"><i class="fas fa-rocket"></i> Quick Actions</h6>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary btn-lg" onclick="triggerCollection()">
+                                <i class="fas fa-sync-alt me-2"></i> Collect News Now
+                            </button>
+                            <button class="btn btn-secondary btn-lg" onclick="collect7DaysNews()">
+                                <i class="fas fa-calendar-week me-2"></i> Collect 7-Day News
+                            </button>
+                            <button class="btn btn-success btn-lg" onclick="showStoredArticles()">
+                                <i class="fas fa-database me-2"></i> View All Stored Articles
+                            </button>
+                            <button class="btn btn-info btn-lg" onclick="window.location.href='/articles?ai_only=true'">
+                                <i class="fas fa-robot me-2"></i> Browse AI News
+                            </button>
+                            <button class="btn btn-warning btn-lg" onclick="reprocessArticles()">
+                                <i class="fas fa-brain me-2"></i> Reprocess Sentiment
+                            </button>
                         </div>
-                        <p class="mt-2">Loading service status...</p>
+                    </div>
+
+                    <!-- API Configuration Status -->
+                    <div class="col-lg-6">
+                        <h6 class="mb-3"><i class="fas fa-key"></i> API Configuration Status</h6>
+                        <div id="apiConfigStatus">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
+                                <small class="ms-2">Checking API status...</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -147,11 +173,11 @@
                 </h5>
             </div>
             <div class="card-body">
-                <canvas id="sentimentChart" width="400" height="200"></canvas>
+                <canvas id="sentimentChart"></canvas>
             </div>
         </div>
     </div>
-    
+
     <!-- Source Distribution -->
     <div class="col-lg-6 mb-4">
         <div class="card">
@@ -161,7 +187,7 @@
                 </h5>
             </div>
             <div class="card-body">
-                <canvas id="sourceChart" width="400" height="200"></canvas>
+                <canvas id="sourceChart"></canvas>
             </div>
         </div>
     </div>
@@ -193,28 +219,6 @@
     </div>
 </div>
 
-<div class="row">
-    <!-- Recent Activity -->
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="fas fa-history"></i> Recent Activity
-                </h5>
-            </div>
-            <div class="card-body">
-                <div id="recentActivityContent">
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Loading recent activity...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- Stored Articles Modal -->
 <div class="modal fade" id="storedArticlesModal" tabindex="-1" aria-labelledby="storedArticlesModalLabel" aria-hidden="true">
@@ -245,42 +249,287 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
+<script src="{{ url_for('static', filename='js/chart.min.js') }}" defer></script>
+<script defer>
 let sentimentChart, sourceChart;
 
+// Timeout configuration
+const API_TIMEOUT = 10000; // 10 seconds timeout for API calls
+const RETRY_DELAY = 2000; // 2 seconds delay before retry
+
+// Fetch with timeout wrapper
+async function fetchWithTimeout(url, options = {}, timeout = API_TIMEOUT) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        if (error.name === 'AbortError') {
+            throw new Error('Request timeout');
+        }
+        throw error;
+    }
+}
+
+// Hide loading spinner with error display
+function hideLoadingWithError(containerId, message = 'Failed to load data') {
+    const container = document.getElementById(containerId);
+    if (container) {
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                ${message}
+                <button class="btn btn-sm btn-outline-warning ms-2" onclick="location.reload()">
+                    <i class="fas fa-redo"></i> Retry
+                </button>
+            </div>
+        `;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    loadDashboardData();
-    
+    // Wait a bit for Chart.js to load if using defer
+    setTimeout(() => {
+        loadDashboardData();
+    }, 100);
+
     // Refresh data every 30 seconds
     setInterval(loadDashboardData, 30000);
 });
 
 async function loadDashboardData() {
     try {
-        // Load service status
-        await loadServiceStatus();
-
-        // Load statistics
-        await loadStatistics();
-
-        // Load database status
-        await loadDatabaseStatus();
-
-        // Load recent activity
-        await loadRecentActivity();
-
-        // Load latest articles
-        await loadLatestArticles();
-
+        // Load all components in parallel with timeout
+        await Promise.allSettled([
+            loadAPIConfigStatus(),
+            loadStatistics(),
+            loadDatabaseStatus(),
+            loadLatestArticles()
+        ]);
     } catch (error) {
         console.error('Error loading dashboard data:', error);
     }
 }
 
+async function loadAPIConfigStatus() {
+    try {
+        const content = document.getElementById('apiConfigStatus');
+
+        // Get API status from new dedicated endpoint
+        try {
+            const response = await fetchWithTimeout('/api/news/api-config-status');
+            const data = await response.json();
+
+            if (data.success && data.data) {
+                const apis = data.data;
+                let statusHtml = '<div class="list-group list-group-flush">';
+
+                apis.forEach(api => {
+                    const badge = api.configured
+                        ? `<span class="badge bg-success"><i class="fas fa-check"></i> Configured</span>`
+                        : `<span class="badge bg-secondary"><i class="fas fa-times"></i> Not Set</span>`;
+
+                    statusHtml += `
+                        <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                            <div>
+                                <i class="fab fa-${api.icon} text-${api.color} me-2"></i>
+                                <strong>${api.name}</strong>
+                            </div>
+                            ${badge}
+                        </div>
+                    `;
+                });
+
+                statusHtml += `</div>
+                    <div class="mt-3 text-center">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i>
+                            Configure API keys in <code>.env</code> file
+                        </small>
+                    </div>
+                `;
+
+                content.innerHTML = statusHtml;
+                return;
+            }
+        } catch (error) {
+            console.error('Error fetching API config status:', error);
+        }
+
+        // Fallback to manual display
+        content.innerHTML = `
+            <div class="alert alert-warning mb-0">
+                <i class="fas fa-exclamation-triangle"></i>
+                Failed to load API configuration status
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('Error loading API config status:', error);
+        const content = document.getElementById('apiConfigStatus');
+        content.innerHTML = `
+            <div class="alert alert-warning mb-0">
+                <i class="fas fa-exclamation-triangle"></i>
+                Failed to load API configuration status
+            </div>
+        `;
+    }
+}
+
+async function collect7DaysNews() {
+    try {
+        const button = event.target;
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Collecting 7-day news...';
+
+        const response = await fetchWithTimeout('/api/news/collect-7days', {
+            method: 'POST'
+        }, 300000); // 5 minute timeout for 7-day collection
+
+        const data = await response.json();
+
+        if (data.success) {
+            button.innerHTML = '<i class="fas fa-check me-2"></i> Success!';
+            button.classList.remove('btn-secondary');
+            button.classList.add('btn-success');
+
+            // Show detailed results
+            const resultMsg = `Successfully collected ${data.data.saved_to_db} articles from the past 7 days!\n\n` +
+                            `Total collected: ${data.data.total_collected}\n` +
+                            `Saved to database: ${data.data.saved_to_db}\n` +
+                            `Failed: ${data.data.failed}\n\n` +
+                            `Sources: ${Object.entries(data.data.sources).map(([k,v]) => `${k}: ${v}`).join(', ')}`;
+
+            alert(resultMsg);
+
+            // Refresh dashboard after 2 seconds
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            throw new Error(data.error || 'Collection failed');
+        }
+    } catch (error) {
+        console.error('Error collecting 7-day news:', error);
+        const button = event.target;
+        button.innerHTML = '<i class="fas fa-times me-2"></i> Failed';
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-danger');
+
+        alert('Failed to collect 7-day news: ' + error.message);
+
+        setTimeout(() => {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-calendar-week me-2"></i> Collect 7-Day News';
+            button.classList.remove('btn-danger');
+            button.classList.add('btn-secondary');
+        }, 3000);
+    }
+}
+
+async function triggerCollection() {
+    try {
+        const button = event.target;
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Collecting...';
+
+        const response = await fetchWithTimeout('/api/news/collect', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            button.innerHTML = '<i class="fas fa-check me-2"></i> Success!';
+            button.classList.remove('btn-primary');
+            button.classList.add('btn-success');
+
+            // Refresh dashboard after 2 seconds
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            throw new Error(data.error || 'Collection failed');
+        }
+    } catch (error) {
+        console.error('Error triggering collection:', error);
+        const button = event.target;
+        button.innerHTML = '<i class="fas fa-times me-2"></i> Failed';
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-danger');
+
+        alert('Failed to trigger collection: ' + error.message);
+
+        setTimeout(() => {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-sync-alt me-2"></i> Collect News Now';
+            button.classList.remove('btn-danger');
+            button.classList.add('btn-primary');
+        }, 3000);
+    }
+}
+
+async function reprocessArticles() {
+    try {
+        if (!confirm('This will reprocess all articles for sentiment analysis. Continue?')) {
+            return;
+        }
+
+        const button = event.target;
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Processing...';
+
+        const response = await fetchWithTimeout('/api/news/reprocess', {
+            method: 'POST'
+        }, 60000); // 60 second timeout for reprocessing
+
+        const data = await response.json();
+
+        if (data.success) {
+            button.innerHTML = '<i class="fas fa-check me-2"></i> Done!';
+            button.classList.remove('btn-warning');
+            button.classList.add('btn-success');
+
+            alert(`Successfully reprocessed ${data.data.updated_articles} articles!`);
+
+            // Refresh dashboard after 2 seconds
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            throw new Error(data.error || 'Reprocessing failed');
+        }
+    } catch (error) {
+        console.error('Error reprocessing articles:', error);
+        const button = event.target;
+        button.innerHTML = '<i class="fas fa-times me-2"></i> Failed';
+        button.classList.remove('btn-warning');
+        button.classList.add('btn-danger');
+
+        alert('Failed to reprocess articles: ' + error.message);
+
+        setTimeout(() => {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-brain me-2"></i> Reprocess Sentiment';
+            button.classList.remove('btn-danger');
+            button.classList.add('btn-warning');
+        }, 3000);
+    }
+}
+
 async function loadServiceStatus() {
     try {
-        const response = await fetch('/api/news/status');
+        const response = await fetchWithTimeout('/api/news/status');
         const data = await response.json();
         
         if (data.success) {
@@ -317,12 +566,13 @@ async function loadServiceStatus() {
         }
     } catch (error) {
         console.error('Error loading service status:', error);
+        hideLoadingWithError('serviceStatusContent', 'Failed to load service status');
     }
 }
 
 async function loadStatistics() {
     try {
-        const response = await fetch('/api/news/stats');
+        const response = await fetchWithTimeout('/api/news/stats');
         const data = await response.json();
 
         if (data.success) {
@@ -354,12 +604,13 @@ async function loadStatistics() {
         }
     } catch (error) {
         console.error('Error loading statistics:', error);
+        hideLoadingWithError('totalArticles', 'Error loading stats');
     }
 }
 
 async function loadDatabaseStatus() {
     try {
-        const response = await fetch('/api/news/stats');
+        const response = await fetchWithTimeout('/api/news/stats');
         const data = await response.json();
 
         if (data.success && data.data.database_stats) {
@@ -425,52 +676,13 @@ async function loadDatabaseStatus() {
         }
     } catch (error) {
         console.error('Error loading database status:', error);
-    }
-}
-
-async function loadRecentActivity() {
-    try {
-        const response = await fetch('/api/news/status');
-        const data = await response.json();
-        
-        if (data.success) {
-            const status = data.data;
-            const content = document.getElementById('recentActivityContent');
-            
-            let activityHtml = '<div class="list-group list-group-flush">';
-            
-            // Show recent collector activities
-            for (const [collectorId, collector] of Object.entries(status.collectors)) {
-                const lastCollection = collector.last_collection
-                    ? new Date(collector.last_collection).toLocaleDateString()
-                    : 'Never';
-                
-                const statusBadge = collector.is_running 
-                    ? '<span class="badge bg-success">Running</span>'
-                    : '<span class="badge bg-secondary">Idle</span>';
-                
-                activityHtml += `
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${collector.source_name}</strong><br>
-                            <small class="text-muted">Last: ${lastCollection}</small>
-                        </div>
-                        ${statusBadge}
-                    </div>
-                `;
-            }
-            
-            activityHtml += '</div>';
-            content.innerHTML = activityHtml;
-        }
-    } catch (error) {
-        console.error('Error loading recent activity:', error);
+        hideLoadingWithError('databaseStatusContent', 'Failed to load database status');
     }
 }
 
 async function loadLatestArticles() {
     try {
-        const response = await fetch('/api/news/articles?limit=5');
+        const response = await fetchWithTimeout('/api/news/articles?limit=5');
         const data = await response.json();
         
         if (data.success) {
@@ -513,20 +725,26 @@ async function loadLatestArticles() {
         }
     } catch (error) {
         console.error('Error loading latest articles:', error);
+        hideLoadingWithError('latestArticlesContent', 'Failed to load latest articles');
     }
 }
 
 function createSentimentChart(sentimentData) {
-    const ctx = document.getElementById('sentimentChart').getContext('2d');
-    
+    const ctx = document.getElementById('sentimentChart');
+    if (!ctx) return;
+
+    // Set canvas parent container height for proper responsive sizing
+    ctx.parentElement.style.position = 'relative';
+    ctx.parentElement.style.height = '250px';
+
     if (sentimentChart) {
         sentimentChart.destroy();
     }
-    
+
     const labels = Object.keys(sentimentData);
     const data = Object.values(sentimentData);
     const colors = ['#28a745', '#dc3545', '#6c757d', '#ffc107'];
-    
+
     sentimentChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -551,15 +769,20 @@ function createSentimentChart(sentimentData) {
 }
 
 function createSourceChart(sourceData) {
-    const ctx = document.getElementById('sourceChart').getContext('2d');
-    
+    const ctx = document.getElementById('sourceChart');
+    if (!ctx) return;
+
+    // Set canvas parent container height for proper responsive sizing
+    ctx.parentElement.style.position = 'relative';
+    ctx.parentElement.style.height = '250px';
+
     if (sourceChart) {
         sourceChart.destroy();
     }
-    
+
     const labels = Object.keys(sourceData);
     const data = Object.values(sourceData);
-    
+
     sourceChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -621,7 +844,7 @@ async function showStoredArticles() {
     `;
 
     try {
-        const response = await fetch('/api/news/articles?limit=1000');
+        const response = await fetchWithTimeout('/api/news/articles?limit=1000');
         const data = await response.json();
 
         if (data.success && data.data.articles) {

@@ -232,7 +232,36 @@ def create_app():
                 "success": False,
                 "error": str(e)
             }), 500
-    
+
+    @app.route('/api/sources', methods=['GET', 'POST'])
+    @app.route('/api/sources/<source_id>', methods=['GET', 'PUT', 'DELETE'])
+    @app.route('/api/sources/<source_id>/test', methods=['POST'])
+    def sources_proxy(source_id=None):
+        """Proxy /api/sources to /api/news/sources for compatibility."""
+        from .api.news_api import get_sources, get_source, create_source, update_source, delete_source, test_source
+
+        try:
+            # Route to the appropriate handler
+            if '/test' in request.path:
+                return test_source(source_id)
+            elif source_id:
+                if request.method == 'GET':
+                    return get_source(source_id)
+                elif request.method == 'PUT':
+                    return update_source(source_id)
+                elif request.method == 'DELETE':
+                    return delete_source(source_id)
+            else:
+                if request.method == 'GET':
+                    return get_sources()
+                elif request.method == 'POST':
+                    return create_source()
+
+            return jsonify({"success": False, "error": "Method not allowed"}), 405
+        except Exception as e:
+            logger.error(f"Error proxying sources request: {str(e)}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @app.errorhandler(404)
     def not_found(error):
         return jsonify({

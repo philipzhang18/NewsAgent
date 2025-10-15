@@ -6,7 +6,7 @@ import asyncio
 
 from ..services.news_collector_service import NewsCollectorService
 from ..processors.news_processor import NewsProcessor
-from ..models.news_models import NewsArticle
+from ..models.news_models import NewsArticle, SourceType
 from ..config.settings import settings
 from ..services.sqlite_storage_service import sqlite_storage
 from ..services.data_collection_service import data_collection_service
@@ -120,8 +120,22 @@ def get_status():
 		if all_articles:
 			articles_with_dates = [a for a in all_articles if a.published_at]
 			if articles_with_dates:
-				latest_article = max(articles_with_dates, key=lambda a: a.published_at)
-				last_collection = latest_article.published_at.isoformat() + 'Z'
+				# Convert all datetimes to comparable format (use timestamp)
+				from datetime import timezone
+				def get_timestamp(article):
+					dt = article.published_at
+					if dt:
+						# Convert to UTC timezone-aware if needed
+						if dt.tzinfo is None:
+							dt = dt.replace(tzinfo=timezone.utc)
+						return dt.timestamp()
+					return 0
+
+				latest_article = max(articles_with_dates, key=get_timestamp)
+				dt = latest_article.published_at
+				if dt.tzinfo is None:
+					dt = dt.replace(tzinfo=timezone.utc)
+				last_collection = dt.isoformat().replace('+00:00', 'Z')
 
 		# If no collectors and no local articles, try to get data from NewsAPI
 		if status["total_collectors"] == 0 and total_articles == 0:
@@ -917,8 +931,22 @@ def get_stats():
 		if all_articles:
 			articles_with_dates = [a for a in all_articles if a.published_at]
 			if articles_with_dates:
-				latest_article = max(articles_with_dates, key=lambda a: a.published_at)
-				last_collection = latest_article.published_at.isoformat() + 'Z'
+				# Convert all datetimes to comparable format (use timestamp)
+				from datetime import timezone
+				def get_timestamp(article):
+					dt = article.published_at
+					if dt:
+						# Convert to UTC timezone-aware if needed
+						if dt.tzinfo is None:
+							dt = dt.replace(tzinfo=timezone.utc)
+						return dt.timestamp()
+					return 0
+
+				latest_article = max(articles_with_dates, key=get_timestamp)
+				dt = latest_article.published_at
+				if dt.tzinfo is None:
+					dt = dt.replace(tzinfo=timezone.utc)
+				last_collection = dt.isoformat().replace('+00:00', 'Z')
 
 		# Use actual article counts from database/collector service
 		collection_stats = {
@@ -988,6 +1016,263 @@ def get_ai_stats():
 	except Exception as e:
 		logger.error(f"Error getting AI stats: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
+
+@news_api.route('/reprocess', methods=['POST'])
+def reprocess_articles():
+	"""Reprocess articles without sentiment analysis using TextBlob fallback."""
+	try:
+		logger.info("Starting article reprocessing...")
+
+		# Get limit from request
+		limit = request.args.get('limit', 100, type=int)
+		force_all = request.args.get('force_all', 'false').lower() == 'true'
+
+		# Get articles from database
+		db_articles = run_async(sqlite_storage.get_articles(limit=10000))
+
+		if not db_articles:
+			return jsonify({
+				"success": True,
+				"message": "No articles found in database",
+				"data": {
+					"total_articles": 0,
+					"processed_articles": 0,
+					"updated_articles": 0
+				}
+			})
+
+		# Filter articles that need processing (no sentiment or force_all)
+		articles_to_process = []
+		for article_dict in db_articles:
+			if force_all or not article_dict.get('sentiment'):
+				# Convert dict to NewsArticle object
+				from ..models.news_models import SentimentType, SourceType
+
+				article = NewsArticle(
+					id=article_dict['id'],
+					title=article_dict['title'],
+					content=article_dict.get('content', ''),
+					url=article_dict.get('url', ''),
+					source_name=article_dict.get('source_name', 'Unknown'),
+					source_type=SourceType.RSS,  # Default
+					summary=article_dict.get('summary', ''),
+					tags=[]
+				)
+				articles_to_process.append(article)
+
+				if len(articles_to_process) >= limit:
+					break
+
+		if not articles_to_process:
+			return jsonify({
+				"success": True,
+				"message": "All articles already have sentiment analysis",
+				"data": {
+					"total_articles": len(db_articles),
+					"processed_articles": 0,
+					"updated_articles": 0
+				}
+			})
+
+		logger.info(f"Processing {len(articles_to_process)} articles...")
+
+		# Process articles through NewsProcessor (has TextBlob fallback)
+		updated_count = 0
+		failed_count = 0
+
+		for article in articles_to_process:
+			try:
+				# Process article (will use TextBlob if OpenAI unavailable)
+				processed = run_async(processor.process_article(article))
+
+				# Save back to database
+				if processed.sentiment:
+					saved = run_async(sqlite_storage.save_article(processed))
+					if saved:
+						updated_count += 1
+					else:
+						failed_count += 1
+				else:
+					failed_count += 1
+
+			except Exception as e:
+				logger.error(f"Error processing article {article.id}: {str(e)}")
+				failed_count += 1
+
+		logger.info(f"Reprocessing complete: {updated_count} updated, {failed_count} failed")
+
+		return jsonify({
+			"success": True,
+			"message": f"Successfully reprocessed {updated_count} articles",
+			"data": {
+				"total_articles": len(db_articles),
+				"processed_articles": len(articles_to_process),
+				"updated_articles": updated_count,
+				"failed_articles": failed_count
+			}
+		})
+
+	except Exception as e:
+		logger.error(f"Error reprocessing articles: {str(e)}")
+		return jsonify({
+			"success": False,
+			"error": str(e)
+		}), 500
+
+@news_api.route('/collect-7days', methods=['POST'])
+def collect_7days_news():
+	"""Collect news from the past 7 days and store in SQLite."""
+	try:
+		from datetime import datetime, timedelta
+
+		logger.info("Starting 7-day news collection...")
+
+		to_date = datetime.now()
+		from_date = to_date - timedelta(days=7)
+
+		collected_articles = []
+		collection_results = {}
+
+		# Collect from NewsAPI
+		if settings.NEWS_API_KEY:
+			try:
+				params = {
+					'apiKey': settings.NEWS_API_KEY,
+					'q': 'news OR technology OR world OR business OR politics',
+					'from': from_date.strftime('%Y-%m-%d'),
+					'to': to_date.strftime('%Y-%m-%d'),
+					'language': 'en',
+					'sortBy': 'publishedAt',
+					'pageSize': 100
+				}
+				response = requests.get('https://newsapi.org/v2/everything', params=params, timeout=30)
+				response.raise_for_status()
+				data = response.json()
+
+				if data.get('status') == 'ok':
+					articles = data.get('articles', [])
+					for article_data in articles:
+						article = NewsArticle(
+							id=article_data.get('url', '')[:100],
+							title=article_data.get('title', ''),
+							content=article_data.get('content', ''),
+							url=article_data.get('url', ''),
+							source_name=(article_data.get('source') or {}).get('name', 'NewsAPI'),
+							source_type=SourceType.API,
+							summary=article_data.get('description', ''),
+							published_at=datetime.fromisoformat(article_data.get('publishedAt', '').replace('Z', '+00:00')) if article_data.get('publishedAt') else None,
+							tags=[]
+						)
+						collected_articles.append(article)
+					collection_results['NewsAPI'] = len(articles)
+					logger.info(f"Collected {len(articles)} articles from NewsAPI")
+			except Exception as e:
+				logger.error(f"Error collecting from NewsAPI: {str(e)}")
+				collection_results['NewsAPI'] = 0
+
+		# Save all articles to database
+		saved_count = 0
+		failed_count = 0
+
+		for article in collected_articles:
+			try:
+				# Process article for sentiment analysis
+				processed = run_async(processor.process_article(article))
+				# Save to SQLite
+				saved = run_async(sqlite_storage.save_article(processed))
+				if saved:
+					saved_count += 1
+				else:
+					failed_count += 1
+			except Exception as e:
+				logger.error(f"Error saving article: {str(e)}")
+				failed_count += 1
+
+		logger.info(f"7-day collection complete: {saved_count} saved, {failed_count} failed")
+
+		return jsonify({
+			"success": True,
+			"message": f"Successfully collected and stored {saved_count} articles from the past 7 days",
+			"data": {
+				"date_range": {
+					"from": from_date.isoformat(),
+					"to": to_date.isoformat()
+				},
+				"total_collected": len(collected_articles),
+				"saved_to_db": saved_count,
+				"failed": failed_count,
+				"sources": collection_results
+			}
+		})
+
+	except Exception as e:
+		logger.error(f"Error in 7-day collection: {str(e)}")
+		return jsonify({
+			"success": False,
+			"error": str(e)
+		}), 500
+
+
+@news_api.route('/api-config-status', methods=['GET'])
+def get_api_config_status():
+	"""Check which APIs are configured in .env file."""
+	try:
+		from ..config.settings import settings
+
+		api_status = []
+
+		# Check NewsAPI
+		api_status.append({
+			"name": "NewsAPI",
+			"icon": "newspaper",
+			"color": "primary",
+			"configured": bool(settings.NEWS_API_KEY)
+		})
+
+		# Check Twitter/X
+		api_status.append({
+			"name": "Twitter/X",
+			"icon": "twitter",
+			"color": "info",
+			"configured": bool(settings.TWITTER_BEARER_TOKEN)
+		})
+
+		# Check Reddit
+		api_status.append({
+			"name": "Reddit",
+			"icon": "reddit",
+			"color": "warning",
+			"configured": bool(settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET)
+		})
+
+		# Check Exa AI
+		api_status.append({
+			"name": "Exa AI",
+			"icon": "search",
+			"color": "success",
+			"configured": bool(getattr(settings, 'EXA_API_KEY', None))
+		})
+
+		# Check OpenAI
+		api_status.append({
+			"name": "OpenAI",
+			"icon": "brain",
+			"color": "danger",
+			"configured": bool(settings.OPENAI_API_KEY)
+		})
+
+		return jsonify({
+			"success": True,
+			"data": api_status
+		})
+
+	except Exception as e:
+		logger.error(f"Error checking API config status: {str(e)}")
+		return jsonify({
+			"success": False,
+			"error": str(e)
+		}), 500
+
 
 @news_api.route('/ai-summary', methods=['POST'])
 def generate_ai_summary():

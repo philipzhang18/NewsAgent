@@ -16,7 +16,8 @@ class Settings:
     NEWS_API_KEY: str = os.getenv("NEWS_API_KEY", "")
     GUARDIAN_API_KEY: str = os.getenv("GUARDIAN_API_KEY", "")
     NYTIMES_API_KEY: str = os.getenv("NYTIMES_API_KEY", "")
-    
+    EXA_API_KEY: str = os.getenv("EXA_API_KEY", "")  # Exa AI Search
+
     # Social Media API Keys
     TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
     TWITTER_API_KEY: str = os.getenv("TWITTER_API_KEY", "")

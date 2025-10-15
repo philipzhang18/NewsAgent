@@ -100,26 +100,12 @@ class TwitterCollector(BaseCollector):
             return False
 
         try:
-            # Test API access by doing a simple search
-            # Bearer Token can do searches without user context
-            test_response = self.client.search_recent_tweets(
-                query="news",
-                max_results=10
-            )
+            # For Bearer Token, we can just check if the client is initialized
+            # No need to make actual API calls during validation
+            # This saves API quota
+            logger.info("Twitter API client initialized and ready")
+            return True
 
-            if test_response:
-                logger.info("Twitter API access validated successfully")
-                return True
-            else:
-                logger.error("Failed to validate Twitter API access")
-                return False
-
-        except tweepy.errors.Unauthorized:
-            logger.error("Twitter API authentication failed - invalid credentials")
-            return False
-        except tweepy.errors.Forbidden:
-            logger.error("Twitter API access forbidden - check API permissions")
-            return False
         except Exception as e:
             logger.error(f"Error validating Twitter API: {str(e)}")
             return False
@@ -187,12 +173,13 @@ class TwitterCollector(BaseCollector):
 
         try:
             # Use Twitter API v2 search recent tweets
+            # Note: This requires Essential access (free tier limits apply)
             response = self.client.search_recent_tweets(
                 query=query,
-                max_results=min(max_results, 100),
-                tweet_fields=['created_at', 'author_id', 'public_metrics', 'entities', 'context_annotations'],
-                expansions=['author_id', 'referenced_tweets.id'],
-                user_fields=['username', 'name', 'verified']
+                max_results=min(max_results, 10),  # Reduce to 10 to save API quota
+                tweet_fields=['created_at', 'author_id', 'public_metrics'],
+                expansions=['author_id'],
+                user_fields=['username', 'name']
             )
 
             if not response or not response.data:
@@ -217,6 +204,12 @@ class TwitterCollector(BaseCollector):
             logger.debug(f"Found {len(articles)} tweets for query: {query}")
             return articles
 
+        except tweepy.errors.TooManyRequests as e:
+            logger.warning(f"Twitter API rate limit exceeded for query '{query}'. Please wait before trying again.")
+            return []
+        except tweepy.errors.Forbidden as e:
+            logger.error(f"Twitter API access forbidden for query '{query}'. Check API permissions and access level.")
+            return []
         except Exception as e:
             logger.error(f"Error searching tweets for query '{query}': {str(e)}")
             return []

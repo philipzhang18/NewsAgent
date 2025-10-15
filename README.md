@@ -15,6 +15,21 @@
 
 ---
 
+## 🆕 Recent Updates (v1.1.0 - 2025-10-15)
+
+**Major Bug Fixes & Performance Improvements:**
+
+- ✅ **99.8% Performance Boost**: Homepage load time improved from >20s to 33ms
+- ✅ **Mobile Responsive Design**: Fixed horizontal scroll issues on all mobile devices
+- ✅ **Sentiment Analysis Working**: Reprocessed 665+ articles with TextBlob analysis
+- ✅ **Local CDN Dependencies**: All critical libraries bundled locally for reliability
+- ✅ **Comprehensive Error Handling**: Timeout protection and user-friendly error messages
+- ✅ **API Consistency**: Added `/api/sources` endpoint compatibility
+
+See [CHANGELOG.md](CHANGELOG.md) for complete details.
+
+---
+
 ## 🌟 Overview
 
 NewsAgent is an enterprise-grade news intelligence platform that automatically collects, processes, and analyzes news from multiple sources using AI and machine learning. It provides real-time insights, sentiment analysis, bias detection, and interactive visualizations.

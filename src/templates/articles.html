@@ -135,7 +135,7 @@ async function loadArticles() {
             aiSummarySection.style.display = 'none';
         }
 
-        let url = '/api/news/articles?limit=50';
+        let url = '/api/news/articles?limit=1000';
         if (aiOnly) {
             url += '&ai_only=true';
         }
