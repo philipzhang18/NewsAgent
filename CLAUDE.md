@@ -8,35 +8,196 @@ This is a News Agent application that automatically collects, processes, and ana
 
 ## Development Commands
 
-### Running the Application
-```bash
-python run.py
-```
-The application starts on `http://localhost:5000` by default.
+### Environment Setup (Required First Step)
 
-### Environment Setup
+**IMPORTANT**: Always work within the virtual environment to ensure proper dependency isolation and avoid conflicts.
+
+#### 1. Create Virtual Environment
 ```bash
-# Create virtual environment
+# Create virtual environment in project root
 python -m venv venv
+# OR use .venv (recommended for better IDE support)
+python -m venv .venv
+```
 
-# Activate virtual environment
-# Windows:
+#### 2. Activate Virtual Environment
+
+**Windows:**
+```bash
+# Using venv
 venv\Scripts\activate
-# Linux/macOS:
+
+# Using .venv
+.venv\Scripts\activate
+
+# You should see (venv) or (.venv) prefix in your terminal
+```
+
+**Linux/macOS:**
+```bash
+# Using venv
 source venv/bin/activate
 
-# Install dependencies
+# Using .venv
+source .venv/bin/activate
+
+# You should see (venv) or (.venv) prefix in your terminal
+```
+
+#### 3. Install Dependencies
+```bash
+# Ensure you are in the virtual environment first!
 pip install -r requirements.txt
 
-# Copy environment configuration
+# Verify installation
+pip list
+```
+
+#### 4. Configure Environment Variables (.env)
+
+**Copy the example configuration:**
+```bash
+# Windows
+copy env.example .env
+
+# Linux/macOS
 cp env.example .env
 ```
 
+**Edit .env file with your API keys and configuration:**
+```env
+# Required API Keys
+OPENAI_API_KEY=your_actual_openai_api_key_here
+NEWS_API_KEY=your_actual_newsapi_key_here
+
+# Optional API Keys (for additional sources)
+GUARDIAN_API_KEY=your_guardian_key
+NYTIMES_API_KEY=your_nytimes_key
+TWITTER_BEARER_TOKEN=your_twitter_token
+REDDIT_CLIENT_ID=your_reddit_id
+REDDIT_CLIENT_SECRET=your_reddit_secret
+
+# Application Settings
+FLASK_SECRET_KEY=generate_a_random_secret_key
+DEBUG=True
+LOG_LEVEL=INFO
+
+# Database (Optional)
+MONGODB_URI=mongodb://localhost:27017/news_agent
+REDIS_URL=redis://localhost:6379
+```
+
+**Important Notes:**
+- Never commit `.env` file to version control (already in .gitignore)
+- Generate a strong FLASK_SECRET_KEY: `python -c "import secrets; print(secrets.token_hex(32))"`
+- Obtain API keys from:
+  - OpenAI: https://platform.openai.com/api-keys
+  - NewsAPI: https://newsapi.org/register
+  - Guardian: https://open-platform.theguardian.com/access/
+  - NYTimes: https://developer.nytimes.com/get-started
+
+### Running the Application
+
+**ALWAYS run the application inside the virtual environment:**
+
+```bash
+# 1. Ensure virtual environment is activated
+# You should see (venv) or (.venv) in your terminal
+
+# 2. Run the application
+python run.py
+
+# The application will start on http://localhost:5000
+```
+
+**Expected Output:**
+```
+INFO - Starting News Agent application...
+INFO - Debug mode: True
+INFO - Log level: INFO
+* Running on http://0.0.0.0:5000
+```
+
+**If you see configuration errors:**
+```
+ERROR - Invalid configuration. Please check your environment variables.
+ERROR - Required: OPENAI_API_KEY, NEWS_API_KEY
+```
+This means you need to properly configure your `.env` file with valid API keys.
+
 ### Linting
 ```bash
-# Based on CI configuration
-flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+# Install flake8 in virtual environment if not already installed
+pip install flake8
+
+# Run critical error checks
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,backup_*
+
+# Run code quality checks
+flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics --exclude=venv,.venv,backup_*
+```
+
+### Testing with Playwright MCP (Automated UI Testing)
+
+**Playwright MCP** is a Model Context Protocol server that provides browser automation for testing web applications.
+
+#### Prerequisites for Playwright MCP
+
+1. **Ensure virtual environment is activated**
+2. **Install Playwright MCP dependencies:**
+```bash
+# Install MCP server for Playwright
+npm install -g @playwright/test
+
+# Install Playwright browsers
+npx playwright install
+```
+
+#### Using Playwright MCP to Check for Bugs
+
+**1. Start the application first:**
+```bash
+# In terminal 1: Start the Flask app
+python run.py
+```
+
+**2. Run Playwright tests:**
+```bash
+# In terminal 2: Run automated browser tests
+# Test homepage accessibility
+npx playwright test --headed
+
+# Or use specific test files if you have them
+npx playwright test tests/e2e/
+```
+
+#### Common Issues to Check with Playwright MCP:
+
+- **Homepage Loading**: Verify page loads without errors
+- **Navigation**: Test all menu links and navigation flows
+- **Forms**: Test article collection, search functionality
+- **API Endpoints**: Verify AJAX calls complete successfully
+- **Mobile Responsiveness**: Test on different viewport sizes
+- **JavaScript Errors**: Check browser console for errors
+- **Performance**: Measure page load times
+- **Accessibility**: Check ARIA labels and keyboard navigation
+
+#### Manual Bug Checking (Without MCP)
+
+If Playwright MCP is not available, perform manual checks:
+
+```bash
+# Check Python syntax errors
+python -m py_compile src/**/*.py
+
+# Check for common issues
+python -m pylint src/ --disable=all --enable=E,F
+
+# Run the application with debug mode
+DEBUG=True python run.py
+
+# Monitor logs for errors
+tail -f news_agent.log
 ```
 
 ## Architecture
