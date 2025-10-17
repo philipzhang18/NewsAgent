@@ -1,0 +1,25 @@
+[flake8]
+# Exclude virtual environments, backup files, and other non-source directories
+exclude =
+    .venv,
+    venv,
+    backup_*,
+    __pycache__,
+    .git,
+    .github,
+    node_modules,
+    build,
+    dist,
+    *.egg-info
+
+# Maximum line length
+max-line-length = 120
+
+# Maximum complexity
+max-complexity = 10
+
+# Error codes to always check (critical errors)
+select = E9,F63,F7,F82
+
+# Ignore specific errors if needed
+# ignore = E203,W503
