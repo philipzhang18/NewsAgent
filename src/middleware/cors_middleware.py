@@ -126,8 +126,6 @@ def init_cors(
         methods: List of allowed HTTP methods
         allow_credentials: Allow credentials
     """
-    global cors_config
-
     # Update configuration
     if origins:
         cors_config.allowed_origins = origins

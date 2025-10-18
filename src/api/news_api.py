@@ -669,6 +669,8 @@ def get_source(source_id: str):
 def update_source(source_id: str):
 	"""Update an existing news source."""
 	try:
+		from datetime import datetime
+
 		data = request.get_json()
 		if not data:
 			return jsonify({"success": False, "error": "No data provided"}), 400
