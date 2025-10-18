@@ -336,10 +336,13 @@ async function loadAPIConfigStatus() {
                         ? `<span class="badge bg-success"><i class="fas fa-check"></i> Configured</span>`
                         : `<span class="badge bg-secondary"><i class="fas fa-times"></i> Not Set</span>`;
 
+                    // Use icon_type from API response, or default to 'fas'
+                    const iconType = api.icon_type || 'fas';
+
                     statusHtml += `
                         <div class="list-group-item d-flex justify-content-between align-items-center py-2">
                             <div>
-                                <i class="fab fa-${api.icon} text-${api.color} me-2"></i>
+                                <i class="${iconType} fa-${api.icon} text-${api.color} me-2"></i>
                                 <strong>${api.name}</strong>
                             </div>
                             ${badge}
@@ -844,7 +847,7 @@ async function showStoredArticles() {
     `;
 
     try {
-        const response = await fetchWithTimeout('/api/news/articles?limit=1000');
+        const response = await fetchWithTimeout('/api/news/articles?limit=10000');
         const data = await response.json();
 
         if (data.success && data.data.articles) {
@@ -861,11 +864,13 @@ async function showStoredArticles() {
                         <thead class="table-primary">
                             <tr>
                                 <th style="width: 5%">#</th>
-                                <th style="width: 40%">Title</th>
-                                <th style="width: 20%">Source</th>
-                                <th style="width: 15%">Published</th>
+                                <th style="width: 25%">Title</th>
+                                <th style="width: 12%">Source Name</th>
+                                <th style="width: 10%">Collector</th>
+                                <th style="width: 12%">Source Type</th>
+                                <th style="width: 12%">Published</th>
                                 <th style="width: 10%">Sentiment</th>
-                                <th style="width: 10%">Link</th>
+                                <th style="width: 8%">Link</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -878,14 +883,25 @@ async function showStoredArticles() {
 
                 const sentimentBadge = getSentimentBadge(article.sentiment);
 
+                // Use source_display if available, otherwise fall back to source_name
+                const sourceDisplay = article.source_display || article.source_name || article.source || 'Unknown';
+
                 tableHtml += `
                     <tr>
                         <td>${index + 1}</td>
                         <td>
                             <strong>${article.title || 'No title'}</strong>
-                            ${article.summary ? `<br><small class="text-muted">${article.summary.substring(0, 100)}...</small>` : ''}
+                            ${article.summary ? `<br><small class="text-muted">${article.summary.substring(0, 80)}...</small>` : ''}
                         </td>
-                        <td>${article.source_name || article.source || 'Unknown'}</td>
+                        <td>
+                            <span class="badge bg-primary">${article.source_name || 'Unknown'}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-success">${article.collector || 'N/A'}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-info">${sourceDisplay}</span>
+                        </td>
                         <td>${publishedDate}</td>
                         <td>${sentimentBadge}</td>
                         <td>
@@ -901,7 +917,8 @@ async function showStoredArticles() {
                 </div>
                 <div class="alert alert-info mt-3">
                     <i class="fas fa-info-circle"></i>
-                    <strong>Total:</strong> ${articles.length} articles stored in database
+                    <strong>Displaying:</strong> ${articles.length} articles from local database
+                    ${articles.length >= 10000 ? ' <span class="badge bg-warning">Limit reached (10000 max)</span>' : ''}
                 </div>
             `;
 

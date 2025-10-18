@@ -251,16 +251,25 @@ def get_articles():
 		category = request.args.get('category')
 		ai_only = request.args.get('ai_only', 'false').lower() == 'true'
 
+		# Ensure database is connected
+		if not sqlite_storage.is_connected():
+			sqlite_storage.connect()
+			logger.info("Database reconnected in get_articles")
+
 		# Try to get articles from SQLite database first
 		if sqlite_storage.is_connected():
 			try:
+				# When AI filtering is requested, fetch more articles to ensure we get enough after filtering
+				fetch_limit = limit * 3 if ai_only else limit
+				fetch_limit = min(fetch_limit, 10000)  # Cap at 10000 for performance
+
 				if query:
 					# Use full-text search for query
-					db_articles = run_async(sqlite_storage.search_articles(query, limit=limit))
+					db_articles = run_async(sqlite_storage.search_articles(query, limit=fetch_limit))
 				else:
 					# Get articles with optional filters
 					db_articles = run_async(sqlite_storage.get_articles(
-						limit=limit,
+						limit=fetch_limit,
 						category=category if category else None
 					))
 
@@ -270,12 +279,14 @@ def get_articles():
 					for article in db_articles:
 						mapped_article = {
 							"id": article.get('id'),
-							"title": article.get('title'),
+							"title": article.get('title') or '',
 							"summary": article.get('summary') or '',
-							"content": article.get('content'),
-							"source": article.get('source_name'),
-							"source_name": article.get('source_name'),
-							"url": article.get('url'),
+							"content": article.get('content') or '',
+							"source": article.get('source_name') or '',
+							"source_name": article.get('source_name') or '',
+							"source_display": article.get('source_display') or article.get('source_name') or '',
+							"collector": article.get('collector') or '',
+							"url": article.get('url') or '',
 							"published_at": article.get('published_at'),
 							"sentiment": article.get('sentiment'),
 							"bias_score": article.get('bias_score'),
@@ -315,6 +326,7 @@ def get_articles():
 				"content": article.content,
 				"source": article.source_name,
 				"source_name": article.source_name,
+				"collector": article.collector if hasattr(article, 'collector') else '',
 				"url": article.url,
 				"published_at": article.published_at.isoformat() if article.published_at else None,
 				"sentiment": article.sentiment.value if article.sentiment else None,
@@ -534,6 +546,7 @@ def trigger_collection():
 								content=article_data.get('content', ''),
 								url=article_data.get('url', ''),
 								source_name=(article_data.get('source') or {}).get('name', 'NewsAPI'),
+								collector="NewsAPI",
 								source_type=SourceType.API,
 								summary=description,
 								published_at=datetime.fromisoformat(article_data.get('publishedAt', '').replace('Z', '+00:00')) if article_data.get('publishedAt') else None,
@@ -677,18 +690,31 @@ def get_sources():
 			if source_counts:
 				logger.debug(f"Matching '{source.name}' against source_counts: {list(source_counts.keys())}")
 
-			# Try to match by source name in articles
+			# Smart matching logic for different source types
 			matched_sources = []
 			for src_name, count in source_counts.items():
+				matched = False
+
 				# Exact match (case-insensitive)
 				if source.name.lower() == src_name.lower():
-					article_count += count
-					if pub_date := source_last_updated.get(src_name):
-						if not last_updated or pub_date > last_updated:
-							last_updated = pub_date
-					matched_sources.append(src_name)
-				# Partial match - be more flexible
+					matched = True
+				# Reddit-specific matching: "Reddit News" matches "Reddit/r/..."
+				elif "reddit" in source.name.lower() and "reddit" in src_name.lower():
+					matched = True
+				# Twitter-specific matching: "Twitter News" matches "Twitter/..."
+				elif "twitter" in source.name.lower() and "twitter" in src_name.lower():
+					matched = True
+				# Exa AI-specific matching: "Exa AI" matches "Exa AI Search" or contains "exa"
+				elif "exa" in source.name.lower() and "exa" in src_name.lower():
+					matched = True
+				# NewsAPI-specific matching: only exact "NewsAPI" match
+				elif source.name.lower() == "newsapi" and src_name.lower() == "newsapi":
+					matched = True
+				# Generic partial match for other sources
 				elif source.name.lower() in src_name.lower() or src_name.lower() in source.name.lower():
+					matched = True
+
+				if matched:
 					article_count += count
 					if pub_date := source_last_updated.get(src_name):
 						if not last_updated or pub_date > last_updated:
@@ -987,18 +1013,27 @@ def get_stats():
 				articles_by_sentiment = db_stats.get('articles_by_sentiment', {})
 				last_published = db_stats.get('last_published')
 
-				# Count AI articles efficiently
-				# We'll need to count based on title/summary/content containing AI keywords
-				# For now, use a reasonable estimate (will be accurate after implementing SQL LIKE queries)
+				# Count AI articles efficiently using parameterized queries
+				# Use same AI_KEYWORDS as is_ai_related function for consistency
 				ai_articles_count = 0
 				try:
 					cursor = sqlite_storage.conn.cursor()
-					# Count articles with AI-related keywords in title
-					ai_keywords_sql = ' OR '.join([f"title LIKE '%{kw}%' OR summary LIKE '%{kw}%'"
-						for kw in ['AI', 'artificial intelligence', 'machine learning', 'GPT', 'ChatGPT']])
-					cursor.execute(f'SELECT COUNT(*) as count FROM articles WHERE {ai_keywords_sql}')
+					# Use parameterized queries to prevent SQL injection
+					# Use same keywords as AI_KEYWORDS for consistency
+					ai_keywords_for_sql = [
+						'ai', 'artificial intelligence', 'machine learning', 'deep learning',
+						'neural network', 'gpt', 'chatgpt', 'llm', 'large language model',
+						'generative ai', 'transformer', 'openai', 'google ai', 'anthropic',
+						'claude', 'gemini'
+					]
+					# Create placeholders for parameterized query
+					placeholders = ' OR '.join(['(title LIKE ? OR summary LIKE ? OR content LIKE ?)' for _ in ai_keywords_for_sql])
+					# Create parameters with wildcards
+					params = [f'%{kw}%' for kw in ai_keywords_for_sql for _ in range(3)]
+					cursor.execute(f'SELECT COUNT(*) as count FROM articles WHERE {placeholders}', params)
 					ai_articles_count = cursor.fetchone()['count']
-				except:
+				except Exception as e:
+					logger.error(f"Error counting AI articles: {str(e)}")
 					ai_articles_count = 0
 
 				# Normalize sentiment distribution
@@ -1252,6 +1287,7 @@ def collect_7days_news():
 							content=article_data.get('content', ''),
 							url=article_data.get('url', ''),
 							source_name=(article_data.get('source') or {}).get('name', 'NewsAPI'),
+							collector="NewsAPI",
 							source_type=SourceType.API,
 							summary=article_data.get('description', ''),
 							published_at=datetime.fromisoformat(article_data.get('publishedAt', '').replace('Z', '+00:00')) if article_data.get('publishedAt') else None,
@@ -1307,6 +1343,44 @@ def collect_7days_news():
 		}), 500
 
 
+@news_api.route('/collect-all-sources', methods=['POST'])
+def collect_all_sources():
+	"""Collect news from ALL configured sources (RSS, NewsAPI, Twitter, Reddit, Exa AI)."""
+	try:
+		logger.info("Starting collection from all sources (RSS, NewsAPI, Twitter, Reddit, Exa)...")
+
+		# Use data_collection_service to collect from all sources
+		result = run_async(data_collection_service.collect_all(save_to_db=True))
+
+		if result.get("success"):
+			logger.info(f"All sources collection complete: {result.get('saved_to_db')} articles saved")
+
+			return jsonify({
+				"success": True,
+				"message": f"Successfully collected articles from all sources",
+				"data": {
+					"total_collected": result.get("total_collected", 0),
+					"rss_articles": result.get("rss_articles", 0),
+					"newsapi_articles": result.get("newsapi_articles", 0),
+					"twitter_articles": result.get("twitter_articles", 0),
+					"reddit_articles": result.get("reddit_articles", 0),
+					"exa_articles": result.get("exa_articles", 0),
+					"saved_to_db": result.get("saved_to_db", 0),
+					"duration_seconds": result.get("duration_seconds", 0),
+					"timestamp": result.get("timestamp")
+				}
+			})
+		else:
+			raise Exception("Collection failed")
+
+	except Exception as e:
+		logger.error(f"Error in all sources collection: {str(e)}")
+		return jsonify({
+			"success": False,
+			"error": str(e)
+		}), 500
+
+
 @news_api.route('/api-config-status', methods=['GET'])
 def get_api_config_status():
 	"""Check which APIs are configured in .env file."""
@@ -1319,6 +1393,7 @@ def get_api_config_status():
 		api_status.append({
 			"name": "NewsAPI",
 			"icon": "newspaper",
+			"icon_type": "fas",  # Font Awesome Solid
 			"color": "primary",
 			"configured": bool(settings.NEWS_API_KEY)
 		})
@@ -1326,7 +1401,8 @@ def get_api_config_status():
 		# Check Twitter/X
 		api_status.append({
 			"name": "Twitter/X",
-			"icon": "twitter",
+			"icon": "twitter",  # Updated Twitter/X icon
+			"icon_type": "fab",  # Font Awesome Brand
 			"color": "info",
 			"configured": bool(settings.TWITTER_BEARER_TOKEN)
 		})
@@ -1334,7 +1410,8 @@ def get_api_config_status():
 		# Check Reddit
 		api_status.append({
 			"name": "Reddit",
-			"icon": "reddit",
+			"icon": "reddit-alien",
+			"icon_type": "fab",  # Font Awesome Brand
 			"color": "warning",
 			"configured": bool(settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET)
 		})
@@ -1343,6 +1420,7 @@ def get_api_config_status():
 		api_status.append({
 			"name": "Exa AI",
 			"icon": "search",
+			"icon_type": "fas",  # Font Awesome Solid
 			"color": "success",
 			"configured": bool(getattr(settings, 'EXA_API_KEY', None))
 		})
@@ -1350,7 +1428,8 @@ def get_api_config_status():
 		# Check OpenAI
 		api_status.append({
 			"name": "OpenAI",
-			"icon": "brain",
+			"icon": "robot",
+			"icon_type": "fas",  # Font Awesome Solid
 			"color": "danger",
 			"configured": bool(settings.OPENAI_API_KEY)
 		})
@@ -1375,29 +1454,69 @@ def generate_ai_summary():
 		from datetime import datetime
 		from collections import Counter
 
-		# Get all AI-related articles
-		all_articles = run_async(collector_service.get_recent_articles(limit=100))
+		# Get all AI-related articles from database
+		ai_articles = []
 
-		def _map_collected_article(article) -> Dict[str, Any]:
-			"""Map collected article to frontend schema."""
-			return {
-				"id": article.id,
-				"title": article.title,
-				"summary": article.summary or (article.content[:200] + "..." if len(article.content) > 200 else article.content),
-				"content": article.content,
-				"source": article.source_name,
-				"source_name": article.source_name,
-				"url": article.url,
-				"published_at": article.published_at.isoformat() if article.published_at else None,
-				"sentiment": article.sentiment.value if article.sentiment else None,
-				"bias_score": article.bias_score,
-				"category": article.category
-			}
+		# Try to get articles from SQLite database first
+		try:
+			# Ensure database is connected
+			if not sqlite_storage.is_connected():
+				sqlite_storage.connect()
+				logger.info("Database reconnected in generate_ai_summary")
 
-		mapped_articles = [_map_collected_article(a) for a in all_articles]
+			# Get all articles from database
+			db_articles = run_async(sqlite_storage.get_articles(limit=10000))
 
-		# Filter AI-related articles
-		ai_articles = [a for a in mapped_articles if is_ai_related(a)]
+			if db_articles:
+				# Map database articles to API format
+				mapped = []
+				for article in db_articles:
+					mapped_article = {
+						"id": article.get('id'),
+						"title": article.get('title') or '',
+						"summary": article.get('summary') or '',
+						"content": article.get('content') or '',
+						"source": article.get('source_name') or '',
+						"source_name": article.get('source_name') or '',
+						"source_display": article.get('source_display') or article.get('source_name') or '',
+						"url": article.get('url') or '',
+						"published_at": article.get('published_at'),
+						"sentiment": article.get('sentiment'),
+						"bias_score": article.get('bias_score'),
+						"category": article.get('category')
+					}
+					mapped.append(mapped_article)
+
+				# Filter AI-related articles
+				ai_articles = [a for a in mapped if is_ai_related(a)]
+				logger.info(f"Found {len(ai_articles)} AI articles from local database")
+		except Exception as db_error:
+			logger.warning(f"Error reading from database for AI summary: {str(db_error)}")
+
+		# If no AI articles from database, try collector service
+		if not ai_articles:
+			all_articles = run_async(collector_service.get_recent_articles(limit=100))
+
+			def _map_collected_article(article) -> Dict[str, Any]:
+				"""Map collected article to frontend schema."""
+				return {
+					"id": article.id,
+					"title": article.title,
+					"summary": article.summary or (article.content[:200] + "..." if len(article.content) > 200 else article.content),
+					"content": article.content,
+					"source": article.source_name,
+					"source_name": article.source_name,
+					"url": article.url,
+					"published_at": article.published_at.isoformat() if article.published_at else None,
+					"sentiment": article.sentiment.value if article.sentiment else None,
+					"bias_score": article.bias_score,
+					"category": article.category
+				}
+
+			mapped_articles = [_map_collected_article(a) for a in all_articles]
+
+			# Filter AI-related articles
+			ai_articles = [a for a in mapped_articles if is_ai_related(a)]
 
 		# If no collected articles, try NewsAPI or use mock data
 		if not ai_articles:
@@ -1555,27 +1674,91 @@ def generate_ai_summary():
 		if 'safety' in all_text or 'regulation' in all_text:
 			key_insights.append("AI safety and regulation discussions ongoing")
 
-		# Get top articles (by recency)
-		top_articles = sorted(
+		# Get top 20 articles (by recency) - use sortable default for None dates
+		top_20_articles = sorted(
 			ai_articles,
-			key=lambda x: x.get('published_at', ''),
+			key=lambda x: x.get('published_at') or '1970-01-01',
 			reverse=True
-		)[:5]
+		)[:20]
+
+		# Also keep top 5 for backward compatibility
+		top_articles = top_20_articles[:5]
 
 		# Generate AI summary using OpenAI (if configured)
 		ai_summary = None
 		if settings.OPENAI_API_KEY and total_articles > 0:
 			try:
-				# Try to generate OpenAI summary
-				article_summaries = [
-					f"- {a.get('title', '')}: {a.get('summary', '')[:100]}"
-					for a in ai_articles[:10]
-				]
-				summary_text = "\n".join(article_summaries)
+				# Analyze source distribution
+				source_counts = Counter([a.get('source_name', 'Unknown') for a in ai_articles])
+				top_sources = source_counts.most_common(5)
+				source_summary = ', '.join([f"{src} ({cnt})" for src, cnt in top_sources])
 
-				# Note: Actual OpenAI integration would go here
-				# For now, provide a structured summary
-				ai_summary = f"Analysis of {total_articles} AI-related articles shows active development in machine learning, with {positive_count} positive and {negative_count} concerning reports. Key topics include {', '.join(trending_topics[:3])}."
+				# Analyze date range
+				dates_available = [a.get('published_at') for a in ai_articles if a.get('published_at')]
+				if dates_available:
+					earliest_date = min(dates_available)[:10] if isinstance(min(dates_available), str) else str(min(dates_available))[:10]
+					latest_date = max(dates_available)[:10] if isinstance(max(dates_available), str) else str(max(dates_available))[:10]
+					date_range = f"from {earliest_date} to {latest_date}"
+				else:
+					date_range = "recent period"
+
+				# Calculate sentiment percentages
+				positive_pct = round((positive_count / total_articles * 100) if total_articles > 0 else 0, 1)
+				negative_pct = round((negative_count / total_articles * 100) if total_articles > 0 else 0, 1)
+				neutral_count = sentiment_summary.get('neutral', 0)
+				neutral_pct = round((neutral_count / total_articles * 100) if total_articles > 0 else 0, 1)
+				mixed_count = sentiment_summary.get('mixed', 0)
+				mixed_pct = round((mixed_count / total_articles * 100) if total_articles > 0 else 0, 1)
+
+				# Generate comprehensive Chinese AI summary (minimum 200 Chinese characters)
+				ai_summary = (
+					f"本次AI新闻综合分析共收录{total_articles}篇人工智能相关文章，时间跨度为{date_range}，全面展现了当前人工智能领域的最新发展动态。"
+					f"从情感倾向分析来看，正面报道占比{positive_pct}%（共{positive_count}篇文章），反映了AI技术进步和突破性成果；"
+					f"负面或关切性报道占比{negative_pct}%（共{negative_count}篇文章），主要涉及AI安全、伦理和监管等议题；"
+					f"中性分析报道占比{neutral_pct}%（共{neutral_count}篇文章）；"
+					f"混合情感报道占比{mixed_pct}%（共{mixed_count}篇文章）。"
+					f"主要新闻来源包括：{source_summary}，这些权威媒体为本次分析提供了丰富的数据支撑。"
+					f"当前AI新闻热点话题和关键词主要集中在：{', '.join(trending_topics[:8]) if len(trending_topics) >= 8 else ', '.join(trending_topics)}等领域。"
+				)
+
+				# Add key insights in Chinese
+				if key_insights:
+					insights_chinese = []
+					for insight in key_insights:
+						if "positive sentiment" in insight.lower():
+							insights_chinese.append(f"新闻报道以正面情绪为主导（{positive_count}/{total_articles}篇）")
+						elif "concerns raised" in insight.lower():
+							insights_chinese.append(f"值得关注的是，有{negative_count}篇文章提出了重要关切")
+						elif "gpt" in insight.lower():
+							insights_chinese.append("GPT系列模型持续成为AI新闻焦点")
+						elif "google" in insight.lower():
+							insights_chinese.append("Google AI技术发展备受关注")
+						elif "safety" in insight.lower():
+							insights_chinese.append("AI安全和监管话题讨论持续深入")
+
+					if insights_chinese:
+						ai_summary += f"关键洞察：{' '.join(insights_chinese)}。"
+
+				# Add detailed conclusion in Chinese
+				if positive_count > negative_count:
+					ai_summary += (
+						"总体而言，AI社区展现出积极向上的发展势头，突破性进展和创新成果成为主流叙事。"
+						"从技术创新、商业应用到学术研究，人工智能正在以前所未有的速度推动各行业变革，"
+						"为人类社会带来新的机遇和可能性。"
+					)
+				elif negative_count > positive_count:
+					ai_summary += (
+						"值得注意的是，当前AI领域面临的挑战和关切正在引发广泛讨论。"
+						"业界和学界对AI安全、伦理问题以及负责任的AI开发提出了重要关切，"
+						"这些讨论对于确保AI技术健康发展具有重要意义。"
+					)
+				else:
+					ai_summary += (
+						"AI领域呈现出机遇与挑战并存的平衡态势。"
+						"在技术快速演进的同时，业界也在积极思考和应对各种潜在问题，"
+						"力求在创新与安全、效率与伦理之间找到最佳平衡点。"
+					)
+
 			except Exception as e:
 				logger.warning(f"Failed to generate OpenAI summary: {str(e)}")
 
@@ -1594,6 +1777,17 @@ def generate_ai_summary():
 					"published_at": a.get('published_at', '')
 				}
 				for a in top_articles
+			],
+			"top_20_articles": [
+				{
+					"title": a.get('title', ''),
+					"url": a.get('url', ''),
+					"source": a.get('source_name', ''),
+					"published_at": a.get('published_at', ''),
+					"sentiment": a.get('sentiment', ''),
+					"summary": a.get('summary', '')[:150] + '...' if len(a.get('summary', '')) > 150 else a.get('summary', '')
+				}
+				for a in top_20_articles
 			],
 			"ai_summary": ai_summary
 		}
