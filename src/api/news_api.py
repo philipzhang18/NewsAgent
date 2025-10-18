@@ -474,17 +474,116 @@ def get_article(article_id: str):
 
 @news_api.route('/collect', methods=['POST'])
 def trigger_collection():
-	"""Trigger news collection from RSS and social media sources."""
+	"""Collect AI news from the past 7 days (English and Chinese only)."""
 	try:
-		logger.info("Manual collection triggered")
+		from datetime import datetime, timedelta
 
-		# Run collection asynchronously
-		result = run_async(data_collection_service.collect_all(save_to_db=True))
+		logger.info("7-day AI news collection triggered")
+
+		to_date = datetime.now()
+		from_date = to_date - timedelta(days=7)
+
+		collected_articles = []
+		collection_results = {}
+
+		# Collect AI news from NewsAPI (English and Chinese)
+		if settings.NEWS_API_KEY:
+			try:
+				# Define AI-related search query
+				ai_query = '(AI OR "artificial intelligence" OR "machine learning" OR "deep learning" OR ' \
+						   '"neural network" OR GPT OR ChatGPT OR LLM OR "large language model" OR ' \
+						   '"generative AI" OR transformer OR OpenAI OR "Google AI" OR Anthropic OR ' \
+						   'Claude OR Gemini OR Copilot OR "computer vision" OR NLP OR ' \
+						   '"natural language processing" OR "reinforcement learning")'
+
+				languages = ['en', 'zh']  # English and Chinese only
+
+				for lang in languages:
+					logger.info(f"Collecting AI news in {lang}...")
+					params = {
+						'apiKey': settings.NEWS_API_KEY,
+						'q': ai_query,
+						'from': from_date.strftime('%Y-%m-%d'),
+						'to': to_date.strftime('%Y-%m-%d'),
+						'language': lang,
+						'sortBy': 'publishedAt',
+						'pageSize': 100
+					}
+
+					response = requests.get('https://newsapi.org/v2/everything', params=params, timeout=30)
+					response.raise_for_status()
+					data = response.json()
+
+					if data.get('status') == 'ok':
+						articles = data.get('articles', [])
+						lang_count = 0
+
+						for article_data in articles:
+							# Double-check if article is AI-related
+							title = article_data.get('title', '')
+							description = article_data.get('description', '')
+							text_to_check = (title + ' ' + description).lower()
+
+							# Filter for AI-related content
+							if not is_ai_related({'title': title, 'summary': description, 'content': ''}):
+								continue
+
+							article = NewsArticle(
+								id=article_data.get('url', '')[:100],
+								title=title,
+								content=article_data.get('content', ''),
+								url=article_data.get('url', ''),
+								source_name=(article_data.get('source') or {}).get('name', 'NewsAPI'),
+								source_type=SourceType.API,
+								summary=description,
+								published_at=datetime.fromisoformat(article_data.get('publishedAt', '').replace('Z', '+00:00')) if article_data.get('publishedAt') else None,
+								tags=['ai', lang]
+							)
+							collected_articles.append(article)
+							lang_count += 1
+
+						collection_results[f'NewsAPI ({lang})'] = lang_count
+						logger.info(f"Collected {lang_count} AI articles in {lang}")
+
+			except Exception as e:
+				logger.error(f"Error collecting from NewsAPI: {str(e)}")
+				collection_results['NewsAPI'] = 0
+
+		# Save all articles to database
+		saved_count = 0
+		failed_count = 0
+
+		for article in collected_articles:
+			try:
+				# Process article for sentiment analysis
+				processed = run_async(processor.process_article(article))
+				# Save to SQLite
+				saved = run_async(sqlite_storage.save_article(processed))
+				if saved:
+					saved_count += 1
+				else:
+					failed_count += 1
+			except Exception as e:
+				logger.error(f"Error saving article: {str(e)}")
+				failed_count += 1
+
+		logger.info(f"7-day AI news collection complete: {saved_count} saved, {failed_count} failed")
 
 		return jsonify({
 			"success": True,
-			"message": "News collection completed successfully",
-			"data": result
+			"message": f"Successfully collected {saved_count} AI news articles from the past 7 days (English & Chinese)",
+			"data": {
+				"date_range": {
+					"from": from_date.isoformat(),
+					"to": to_date.isoformat()
+				},
+				"total_collected": len(collected_articles),
+				"saved_to_db": saved_count,
+				"failed": failed_count,
+				"sources": collection_results,
+				"languages": ["en", "zh"],
+				"ai_filtered": True
+			}
 		})
 	except Exception as e:
 		logger.error(f"Error triggering collection: {str(e)}")
