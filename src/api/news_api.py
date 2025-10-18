@@ -970,126 +970,101 @@ def test_source(source_id: str):
 
 @news_api.route('/stats', methods=['GET'])
 def get_stats():
+	"""Get statistics using efficient SQL aggregation."""
 	try:
 		from datetime import datetime, timedelta
-		import random
 
 		# Get real status from collector service
 		status = run_async(collector_service.get_collection_status())
 
-		# ALWAYS try to get articles from database first for accurate count
-		# This ensures we count only what's actually stored locally
+		# Get statistics efficiently from database using SQL aggregation
 		try:
-			# Try database first for accurate count
-			db_articles = run_async(sqlite_storage.get_articles(limit=10000))
-			total_articles = len(db_articles)
-			# Convert dict articles to object-like structure
-			class ArticleObj:
-				def __init__(self, data):
-					self.id = data.get('id')
-					self.source_name = data.get('source_name')
-					self.published_at = data.get('published_at')
-					self.sentiment = type('obj', (object,), {'value': data.get('sentiment')})() if data.get('sentiment') else None
-					self.title = data.get('title', '')
-					self.summary = data.get('summary', '')
-					self.content = data.get('content', '')
-					if isinstance(self.published_at, str):
-						try:
-							from dateutil import parser
-							self.published_at = parser.parse(self.published_at)
-						except:
-							pass
-			all_articles = [ArticleObj(a) for a in db_articles]
-			data_source = "database"
+			db_stats = run_async(sqlite_storage.get_statistics())
+
+			if db_stats:
+				total_articles = db_stats.get('total_articles', 0)
+				articles_by_source = db_stats.get('articles_by_source', {})
+				articles_by_sentiment = db_stats.get('articles_by_sentiment', {})
+				last_published = db_stats.get('last_published')
+
+				# Count AI articles efficiently
+				# We'll need to count based on title/summary/content containing AI keywords
+				# For now, use a reasonable estimate (will be accurate after implementing SQL LIKE queries)
+				ai_articles_count = 0
+				try:
+					cursor = sqlite_storage.conn.cursor()
+					# Count articles with AI-related keywords in title
+					ai_keywords_sql = ' OR '.join([f"title LIKE '%{kw}%' OR summary LIKE '%{kw}%'"
+						for kw in ['AI', 'artificial intelligence', 'machine learning', 'GPT', 'ChatGPT']])
+					cursor.execute(f'SELECT COUNT(*) as count FROM articles WHERE {ai_keywords_sql}')
+					ai_articles_count = cursor.fetchone()['count']
+				except:
+					ai_articles_count = 0
+
+				# Normalize sentiment distribution
+				sentiment_distribution = {
+					"positive": articles_by_sentiment.get('positive', 0),
+					"negative": articles_by_sentiment.get('negative', 0),
+					"neutral": articles_by_sentiment.get('neutral', 0),
+					"mixed": articles_by_sentiment.get('mixed', 0)
+				}
+
+				# Calculate active sources
+				active_sources = len(articles_by_source)
+
+				# Use actual article counts from database
+				collection_stats = {
+					"total_collections": active_sources,
+					"total_articles": total_articles,
+					"successful_collections": active_sources,
+					"last_collection": last_published,
+					"failed_collections": 0
+				}
+
+				stats = {
+					"collection_stats": collection_stats,
+					"article_stats": {
+						"sentiment_distribution": sentiment_distribution,
+						"source_distribution": articles_by_source
+					},
+					"ai_stats": {
+						"total_ai_articles": ai_articles_count,
+						"ai_percentage": round((ai_articles_count / total_articles * 100) if total_articles > 0 else 0, 1)
+					},
+					"database_stats": {
+						"stored_articles": total_articles,
+						"unique_sources": active_sources,
+						"data_source": "database",
+						"max_capacity": sqlite_storage.MAX_ARTICLES
+					}
+				}
+
+				return jsonify({"success": True, "data": stats})
 		except Exception as e:
-			logger.warning(f"Failed to read from database for stats: {e}, falling back to collector service")
-			# Fallback to collector service
-			all_articles = run_async(collector_service.get_recent_articles(limit=1000))
-			total_articles = len(all_articles)
-			data_source = "collector_service"
+			logger.warning(f"Failed to get stats from database: {e}")
 
-		# Count sentiment distribution
-		sentiment_distribution = {
-			"positive": 0,
-			"negative": 0,
-			"neutral": 0,
-			"mixed": 0
-		}
-
-		# Count source distribution
-		source_distribution = {}
-
-		# Count AI articles
-		ai_articles_count = 0
-
-		for article in all_articles:
-			# Count sentiment
-			if article.sentiment:
-				sentiment_key = article.sentiment.value
-				if sentiment_key in sentiment_distribution:
-					sentiment_distribution[sentiment_key] += 1
-
-			# Count source
-			source_name = article.source_name or "Unknown"
-			source_distribution[source_name] = source_distribution.get(source_name, 0) + 1
-
-			# Check if AI related
-			article_dict = {
-				'title': article.title,
-				'summary': article.summary or '',
-				'content': article.content
-			}
-			if is_ai_related(article_dict):
-				ai_articles_count += 1
-
-		# Calculate active sources and last collection time
-		active_sources = len(source_distribution)
-
-		# Get last collection time from articles if available
-		last_collection = None
-		if all_articles:
-			articles_with_dates = [a for a in all_articles if a.published_at]
-			if articles_with_dates:
-				# Convert all datetimes to comparable format (use timestamp)
-				from datetime import timezone
-				def get_timestamp(article):
-					dt = article.published_at
-					if dt:
-						# Convert to UTC timezone-aware if needed
-						if dt.tzinfo is None:
-							dt = dt.replace(tzinfo=timezone.utc)
-						return dt.timestamp()
-					return 0
-
-				latest_article = max(articles_with_dates, key=get_timestamp)
-				dt = latest_article.published_at
-				if dt.tzinfo is None:
-					dt = dt.replace(tzinfo=timezone.utc)
-				last_collection = dt.isoformat().replace('+00:00', 'Z')
-
-		# Use actual article counts from database/collector service
-		collection_stats = {
-			"total_collections": active_sources,  # Number of active sources
-			"total_articles": total_articles,  # Actual article count from database
-			"successful_collections": active_sources,  # Assume all sources successful if we have data
-			"last_collection": last_collection,
-			"failed_collections": 0
-		}
-
+		# Fallback to empty stats
 		stats = {
-			"collection_stats": collection_stats,
+			"collection_stats": {
+				"total_collections": 0,
+				"total_articles": 0,
+				"successful_collections": 0,
+				"last_collection": None,
+				"failed_collections": 0
+			},
 			"article_stats": {
-				"sentiment_distribution": sentiment_distribution,
-				"source_distribution": source_distribution
+				"sentiment_distribution": {"positive": 0, "negative": 0, "neutral": 0, "mixed": 0},
+				"source_distribution": {}
 			},
 			"ai_stats": {
-				"total_ai_articles": ai_articles_count,
-				"ai_percentage": round((ai_articles_count / total_articles * 100) if total_articles > 0 else 0, 1)
+				"total_ai_articles": 0,
+				"ai_percentage": 0
 			},
 			"database_stats": {
-				"stored_articles": total_articles,
-				"unique_sources": active_sources,
-				"data_source": data_source
+				"stored_articles": 0,
+				"unique_sources": 0,
+				"data_source": "none",
+				"max_capacity": sqlite_storage.MAX_ARTICLES
 			}
 		}
 
