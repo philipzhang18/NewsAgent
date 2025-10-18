@@ -103,17 +103,17 @@
                     <div class="col-lg-6 border-end">
                         <h6 class="mb-3"><i class="fas fa-rocket"></i> Quick Actions</h6>
                         <div class="d-grid gap-2">
-                            <button class="btn btn-primary btn-lg" onclick="triggerCollection()">
-                                <i class="fas fa-sync-alt me-2"></i> Collect News Now
-                            </button>
                             <button class="btn btn-secondary btn-lg" onclick="collect7DaysNews()">
                                 <i class="fas fa-calendar-week me-2"></i> Collect 7-Day News
+                            </button>
+                            <button class="btn btn-primary btn-lg" onclick="triggerCollection()">
+                                <i class="fas fa-robot me-2"></i> Collect 7-Day AI News
                             </button>
                             <button class="btn btn-success btn-lg" onclick="showStoredArticles()">
                                 <i class="fas fa-database me-2"></i> View All Stored Articles
                             </button>
                             <button class="btn btn-info btn-lg" onclick="window.location.href='/articles?ai_only=true'">
-                                <i class="fas fa-robot me-2"></i> Browse AI News
+                                <i class="fas fa-newspaper me-2"></i> Browse AI News
                             </button>
                             <button class="btn btn-warning btn-lg" onclick="reprocessArticles()">
                                 <i class="fas fa-brain me-2"></i> Reprocess Sentiment
@@ -471,7 +471,7 @@ async function triggerCollection() {
 
         setTimeout(() => {
             button.disabled = false;
-            button.innerHTML = '<i class="fas fa-sync-alt me-2"></i> Collect News Now';
+            button.innerHTML = '<i class="fas fa-robot me-2"></i> Collect 7-Day AI News';
             button.classList.remove('btn-danger');
             button.classList.add('btn-primary');
         }, 3000);
