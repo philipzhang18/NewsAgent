@@ -489,7 +489,7 @@ async function reprocessArticles() {
         button.disabled = true;
         button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Processing...';
 
-        const response = await fetchWithTimeout('/api/news/reprocess', {
+        const response = await fetchWithTimeout('/api/news/reprocess?force_all=true', {
             method: 'POST'
         }, 60000); // 60 second timeout for reprocessing
 
