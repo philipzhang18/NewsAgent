@@ -570,16 +570,34 @@ def get_sources():
 			else:
 				source_type = "API"
 
-			# Find matching article count
+			# Find matching article count with improved logic
 			article_count = 0
 			last_updated = now.isoformat() + 'Z'
 
+			# Log source_counts for debugging
+			if source_counts:
+				logger.debug(f"Matching '{source.name}' against source_counts: {list(source_counts.keys())}")
+
 			# Try to match by source name in articles
+			matched_sources = []
 			for src_name, count in source_counts.items():
-				if source.name.lower() in src_name.lower() or src_name.lower() in source.name.lower():
-					article_count = count
-					last_updated = source_last_updated.get(src_name, last_updated)
-					break
+				# Exact match (case-insensitive)
+				if source.name.lower() == src_name.lower():
+					article_count += count
+					if pub_date := source_last_updated.get(src_name):
+						if not last_updated or pub_date > last_updated:
+							last_updated = pub_date
+					matched_sources.append(src_name)
+				# Partial match - be more flexible
+				elif source.name.lower() in src_name.lower() or src_name.lower() in source.name.lower():
+					article_count += count
+					if pub_date := source_last_updated.get(src_name):
+						if not last_updated or pub_date > last_updated:
+							last_updated = pub_date
+					matched_sources.append(src_name)
+
+			if matched_sources:
+				logger.debug(f"Source '{source.name}' matched: {matched_sources}, total articles: {article_count}")
 
 			sources.append({
 				"id": source_id,
