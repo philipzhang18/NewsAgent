@@ -1704,54 +1704,118 @@ def generate_ai_summary():
 				mixed_count = sentiment_summary.get('mixed', 0)
 				mixed_pct = round((mixed_count / total_articles * 100) if total_articles > 0 else 0, 1)
 
-				# Generate comprehensive Chinese AI summary (minimum 200 Chinese characters)
-				ai_summary = (
-					f"本次AI新闻综合分析共收录{total_articles}篇人工智能相关文章，时间跨度为{date_range}，全面展现了当前人工智能领域的最新发展动态。"
-					f"从情感倾向分析来看，正面报道占比{positive_pct}%（共{positive_count}篇文章），反映了AI技术进步和突破性成果；"
-					f"负面或关切性报道占比{negative_pct}%（共{negative_count}篇文章），主要涉及AI安全、伦理和监管等议题；"
-					f"中性分析报道占比{neutral_pct}%（共{neutral_count}篇文章）；"
-					f"混合情感报道占比{mixed_pct}%（共{mixed_count}篇文章）。"
-					f"主要新闻来源包括：{source_summary}，这些权威媒体为本次分析提供了丰富的数据支撑。"
-					f"当前AI新闻热点话题和关键词主要集中在：{', '.join(trending_topics[:8]) if len(trending_topics) >= 8 else ', '.join(trending_topics)}等领域。"
-				)
+				# Prepare article data for OpenAI analysis
+				articles_data = []
+				for article in ai_articles[:100]:  # Limit to first 100 articles for API efficiency
+					articles_data.append({
+						'title': article.get('title', ''),
+						'summary': article.get('summary', ''),
+						'source': article.get('source_name', ''),
+						'published_at': article.get('published_at', ''),
+						'sentiment': article.get('sentiment', '')
+					})
 
-				# Add key insights in Chinese
-				if key_insights:
-					insights_chinese = []
-					for insight in key_insights:
-						if "positive sentiment" in insight.lower():
-							insights_chinese.append(f"新闻报道以正面情绪为主导（{positive_count}/{total_articles}篇）")
-						elif "concerns raised" in insight.lower():
-							insights_chinese.append(f"值得关注的是，有{negative_count}篇文章提出了重要关切")
-						elif "gpt" in insight.lower():
-							insights_chinese.append("GPT系列模型持续成为AI新闻焦点")
-						elif "google" in insight.lower():
-							insights_chinese.append("Google AI技术发展备受关注")
-						elif "safety" in insight.lower():
-							insights_chinese.append("AI安全和监管话题讨论持续深入")
+				# Prepare statistics summary
+				stats_summary = f"""
+总文章数：{total_articles}篇
+时间范围：{date_range}
+情感分布：
+- 正面 (positive): {positive_count}篇 ({positive_pct}%)
+- 负面 (negative): {negative_count}篇 ({negative_pct}%)
+- 中性 (neutral): {neutral_count}篇 ({neutral_pct}%)
+- 混合 (mixed): {mixed_count}篇 ({mixed_pct}%)
 
-					if insights_chinese:
-						ai_summary += f"关键洞察：{' '.join(insights_chinese)}。"
+主要新闻来源：{source_summary}
+热点话题关键词：{', '.join(trending_topics[:10])}
+"""
 
-				# Add detailed conclusion in Chinese
-				if positive_count > negative_count:
-					ai_summary += (
-						"总体而言，AI社区展现出积极向上的发展势头，突破性进展和创新成果成为主流叙事。"
-						"从技术创新、商业应用到学术研究，人工智能正在以前所未有的速度推动各行业变革，"
-						"为人类社会带来新的机遇和可能性。"
+				# Create prompt for OpenAI
+				prompt = f"""你是一位具有科技媒体洞察力、政策敏感度与商业判断力的AI产业观察员。
+
+请基于以下AI相关新闻数据（包括时间、来源、标题、摘要、情绪值等字段），生成一份中文分析报告。
+
+【数据统计】
+{stats_summary}
+
+【部分新闻样本】（共{total_articles}篇，以下为代表性样本）
+{chr(10).join([f"{i+1}. 标题：{a['title']} | 来源：{a['source']} | 情绪：{a['sentiment']}" for i, a in enumerate(articles_data[:20])])}
+
+【要求】
+1️⃣ 报告内容
+- 全文中文输出，字数不少于500字
+- 从宏观与微观两个角度分析AI新闻的整体情绪与趋势
+- 必须包含明确观点与态度，而非仅客观描述
+
+2️⃣ 分析要点
+- **总体情绪趋势**：统计并归纳新闻情感分布（positive、neutral、negative），指出正负情绪变化的原因，如AI监管、芯片竞争、创新突破、失业焦虑等
+- **核心议题与关注焦点**：识别新闻关键词中最常被讨论的主题，例如「AI安全与治理」「大模型竞争（OpenAI、Anthropic、Google、Meta）」「AI在教育、医疗、金融等行业的落地」「AI监管与伦理」，并评估报道中乐观或悲观的倾向
+- **媒体与公众态度差异**：比较主流媒体与社交平台报道的语气差异，指出哪些类型的情绪报道更易传播或引发共鸣
+- **未来趋势与作者立场**：对AI舆论走向与产业发展做出判断，例如是否进入理性期、监管加强、商业落地加速或信任回升；明确表达你作为分析者的态度（支持、谨慎乐观、担忧、批判等），并说明理由
+
+3️⃣ 风格与语气
+- 行文应具备媒体评论风格：逻辑清晰、观点鲜明、有判断、有温度
+- 可使用数据或比例表达（如「约六成新闻呈现积极态度」）以增强权威性
+- 结尾需有总结与思考提升，例如：「AI正从技术神话走向社会共识的拐点」
+
+4️⃣ 输出格式
+直接输出完整中文分析文本，不需分段列点，不输出代码或标签。
+
+示例开头（仅供风格参考）：
+「从过去一个月全球超过五百条AI相关新闻来看，舆论情绪正呈现出复杂的分化趋势。约六成报道带有积极色彩，聚焦技术突破与商业落地，但负面声音也在增长，集中于监管、安全与就业焦虑。总体而言，AI正从单一热潮，进入理性与反思并存的新阶段……」
+
+请开始生成分析报告："""
+
+				# Call OpenAI API
+				try:
+					from openai import OpenAI
+					openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+					response = openai_client.chat.completions.create(
+						model=settings.OPENAI_MODEL or "gpt-4o-mini",
+						messages=[
+							{"role": "system", "content": "你是一位资深的AI产业观察员和科技媒体评论员，擅长从大量新闻数据中提取趋势、洞察情绪变化，并能够提出有见地的观点和判断。"},
+							{"role": "user", "content": prompt}
+						],
+						max_tokens=2000,
+						temperature=0.7
 					)
-				elif negative_count > positive_count:
-					ai_summary += (
-						"值得注意的是，当前AI领域面临的挑战和关切正在引发广泛讨论。"
-						"业界和学界对AI安全、伦理问题以及负责任的AI开发提出了重要关切，"
-						"这些讨论对于确保AI技术健康发展具有重要意义。"
+
+					ai_summary = response.choices[0].message.content.strip()
+					logger.info(f"Successfully generated AI summary using OpenAI API (length: {len(ai_summary)} chars)")
+
+				except Exception as openai_error:
+					logger.warning(f"Failed to call OpenAI API: {str(openai_error)}, falling back to template")
+
+					# Fallback: Generate template-based summary
+					ai_summary = (
+						f"从过去一段时间收集的{total_articles}篇AI相关新闻来看，舆论情绪正呈现出复杂的分化趋势。"
+						f"约{positive_pct}%的报道带有积极色彩（共{positive_count}篇），聚焦技术突破与商业落地，"
+						f"但负面声音也占据{negative_pct}%（共{negative_count}篇），集中于监管、安全与就业焦虑。"
+						f"中性报道占{neutral_pct}%（{neutral_count}篇），混合情感报道占{mixed_pct}%（{mixed_count}篇）。"
+						f"总体而言，AI正从单一热潮，进入理性与反思并存的新阶段。"
+						f"\n\n主要新闻来源包括：{source_summary}，这些权威媒体为本次分析提供了丰富的数据支撑。"
+						f"当前AI新闻热点话题和关键词主要集中在：{', '.join(trending_topics[:8]) if len(trending_topics) >= 8 else ', '.join(trending_topics)}等领域。"
 					)
-				else:
-					ai_summary += (
-						"AI领域呈现出机遇与挑战并存的平衡态势。"
-						"在技术快速演进的同时，业界也在积极思考和应对各种潜在问题，"
-						"力求在创新与安全、效率与伦理之间找到最佳平衡点。"
-					)
+
+					# Add conclusion based on sentiment distribution
+					if positive_count > negative_count * 1.5:
+						ai_summary += (
+							"\n\n总体而言，AI社区展现出积极向上的发展势头，突破性进展和创新成果成为主流叙事。"
+							"从技术创新、商业应用到学术研究，人工智能正在以前所未有的速度推动各行业变革，"
+							"为人类社会带来新的机遇和可能性。"
+						)
+					elif negative_count > positive_count:
+						ai_summary += (
+							"\n\n值得注意的是，当前AI领域面临的挑战和关切正在引发广泛讨论。"
+							"业界和学界对AI安全、伦理问题以及负责任的AI开发提出了重要关切，"
+							"这些讨论对于确保AI技术健康发展具有重要意义。"
+						)
+					else:
+						ai_summary += (
+							"\n\nAI领域呈现出机遇与挑战并存的平衡态势。"
+							"在技术快速演进的同时，业界也在积极思考和应对各种潜在问题，"
+							"力求在创新与安全、效率与伦理之间找到最佳平衡点。"
+						)
 
 			except Exception as e:
 				logger.warning(f"Failed to generate OpenAI summary: {str(e)}")
