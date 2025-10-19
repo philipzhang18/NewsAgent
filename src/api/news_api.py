@@ -1019,17 +1019,11 @@ def get_stats():
 				try:
 					cursor = sqlite_storage.conn.cursor()
 					# Use parameterized queries to prevent SQL injection
-					# Use same keywords as AI_KEYWORDS for consistency
-					ai_keywords_for_sql = [
-						'ai', 'artificial intelligence', 'machine learning', 'deep learning',
-						'neural network', 'gpt', 'chatgpt', 'llm', 'large language model',
-						'generative ai', 'transformer', 'openai', 'google ai', 'anthropic',
-						'claude', 'gemini'
-					]
+					# Use same keywords as AI_KEYWORDS for consistency (must match the global AI_KEYWORDS list)
 					# Create placeholders for parameterized query
-					placeholders = ' OR '.join(['(title LIKE ? OR summary LIKE ? OR content LIKE ?)' for _ in ai_keywords_for_sql])
+					placeholders = ' OR '.join(['(title LIKE ? OR summary LIKE ? OR content LIKE ?)' for _ in AI_KEYWORDS])
 					# Create parameters with wildcards
-					params = [f'%{kw}%' for kw in ai_keywords_for_sql for _ in range(3)]
+					params = [f'%{kw}%' for kw in AI_KEYWORDS for _ in range(3)]
 					cursor.execute(f'SELECT COUNT(*) as count FROM articles WHERE {placeholders}', params)
 					ai_articles_count = cursor.fetchone()['count']
 				except Exception as e:
