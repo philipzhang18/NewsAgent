@@ -847,35 +847,46 @@ async function showStoredArticles() {
     `;
 
     try {
-        const response = await fetchWithTimeout('/api/news/articles?limit=10000');
+        const response = await fetchWithTimeout('/api/news/articles?limit=10000', {}, 30000);
         const data = await response.json();
+
+        console.log('API Response:', data);  // Debug logging
 
         if (data.success && data.data.articles) {
             const articles = data.data.articles;
+            console.log(`Received ${articles.length} articles from API`);  // Debug logging
 
             if (articles.length === 0) {
                 content.innerHTML = '<p class="text-muted text-center">No articles stored yet.</p>';
                 return;
             }
 
+            // Build table in chunks to avoid browser freezing
             let tableHtml = `
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead class="table-primary">
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <strong>Successfully loaded:</strong> ${articles.length} articles from local database
+                    ${articles.length >= 10000 ? ' <span class="badge bg-warning">Limit reached (10000 max)</span>' : ''}
+                </div>
+                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                    <table class="table table-striped table-hover table-sm">
+                        <thead class="table-primary sticky-top">
                             <tr>
                                 <th style="width: 5%">#</th>
-                                <th style="width: 25%">Title</th>
+                                <th style="width: 30%">Title</th>
                                 <th style="width: 12%">Source Name</th>
                                 <th style="width: 10%">Collector</th>
-                                <th style="width: 12%">Source Type</th>
+                                <th style="width: 15%">Source Display</th>
                                 <th style="width: 12%">Published</th>
-                                <th style="width: 10%">Sentiment</th>
+                                <th style="width: 8%">Sentiment</th>
                                 <th style="width: 8%">Link</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
 
+            // Process all articles
+            let rowsHtml = '';
             articles.forEach((article, index) => {
                 const publishedDate = article.published_at
                     ? new Date(article.published_at).toLocaleDateString()
@@ -886,12 +897,12 @@ async function showStoredArticles() {
                 // Use source_display if available, otherwise fall back to source_name
                 const sourceDisplay = article.source_display || article.source_name || article.source || 'Unknown';
 
-                tableHtml += `
+                rowsHtml += `
                     <tr>
                         <td>${index + 1}</td>
                         <td>
                             <strong>${article.title || 'No title'}</strong>
-                            ${article.summary ? `<br><small class="text-muted">${article.summary.substring(0, 80)}...</small>` : ''}
+                            ${article.summary ? `<br><small class="text-muted">${article.summary.substring(0, 60)}...</small>` : ''}
                         </td>
                         <td>
                             <span class="badge bg-primary">${article.source_name || 'Unknown'}</span>
@@ -902,7 +913,7 @@ async function showStoredArticles() {
                         <td>
                             <span class="badge bg-info">${sourceDisplay}</span>
                         </td>
-                        <td>${publishedDate}</td>
+                        <td><small>${publishedDate}</small></td>
                         <td>${sentimentBadge}</td>
                         <td>
                             ${article.url ? `<a href="${article.url}" target="_blank" class="btn btn-sm btn-primary"><i class="fas fa-external-link-alt"></i></a>` : '-'}
@@ -911,18 +922,15 @@ async function showStoredArticles() {
                 `;
             });
 
-            tableHtml += `
+            tableHtml += rowsHtml + `
                         </tbody>
                     </table>
                 </div>
-                <div class="alert alert-info mt-3">
-                    <i class="fas fa-info-circle"></i>
-                    <strong>Displaying:</strong> ${articles.length} articles from local database
-                    ${articles.length >= 10000 ? ' <span class="badge bg-warning">Limit reached (10000 max)</span>' : ''}
-                </div>
             `;
 
+            console.log(`Built table HTML with ${articles.length} rows`);  // Debug logging
             content.innerHTML = tableHtml;
+            console.log('Table rendered successfully');  // Debug logging
         } else {
             content.innerHTML = '<p class="text-danger text-center">Failed to load stored articles.</p>';
         }
