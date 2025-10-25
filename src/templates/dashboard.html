@@ -306,15 +306,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function loadDashboardData() {
     try {
+        // Load stats data once and share it between functions
+        const statsPromise = loadStatsData();
+
         // Load all components in parallel with timeout
         await Promise.allSettled([
             loadAPIConfigStatus(),
-            loadStatistics(),
-            loadDatabaseStatus(),
+            statsPromise.then(stats => {
+                if (stats) {
+                    loadStatistics(stats);
+                    loadDatabaseStatus(stats);
+                }
+            }),
             loadLatestArticles()
         ]);
     } catch (error) {
         console.error('Error loading dashboard data:', error);
+    }
+}
+
+async function loadStatsData() {
+    try {
+        const response = await fetchWithTimeout('/api/news/stats');
+        const data = await response.json();
+
+        if (data.success) {
+            return data.data;
+        }
+        return null;
+    } catch (error) {
+        console.error('Error loading stats data:', error);
+        return null;
     }
 }
 
@@ -573,52 +595,52 @@ async function loadServiceStatus() {
     }
 }
 
-async function loadStatistics() {
+async function loadStatistics(stats) {
     try {
-        const response = await fetchWithTimeout('/api/news/stats');
-        const data = await response.json();
-
-        if (data.success) {
-            const stats = data.data;
-
-            // Update statistics cards
-            document.getElementById('totalArticles').textContent = stats.collection_stats.total_articles;
-            document.getElementById('activeSources').textContent = stats.collection_stats.total_collections;
-
-            if (stats.collection_stats.last_collection) {
-                const lastCollection = new Date(stats.collection_stats.last_collection);
-                document.getElementById('lastCollection').textContent = lastCollection.toLocaleDateString();
-            }
-
-            const successRate = stats.collection_stats.total_collections > 0
-                ? Math.round((stats.collection_stats.successful_collections / stats.collection_stats.total_collections) * 100)
-                : 0;
-            document.getElementById('successRate').textContent = successRate + '%';
-
-            // Update AI news statistics
-            if (stats.ai_stats) {
-                document.getElementById('aiArticlesCount').textContent = stats.ai_stats.total_ai_articles;
-                document.getElementById('aiPercentage').textContent = stats.ai_stats.ai_percentage;
-            }
-
-            // Create charts
-            createSentimentChart(stats.article_stats.sentiment_distribution);
-            createSourceChart(stats.article_stats.source_distribution);
+        if (!stats) {
+            console.error('No stats data provided to loadStatistics');
+            return;
         }
+
+        // Update statistics cards
+        document.getElementById('totalArticles').textContent = stats.collection_stats.total_articles;
+        document.getElementById('activeSources').textContent = stats.collection_stats.total_collections;
+
+        if (stats.collection_stats.last_collection) {
+            const lastCollection = new Date(stats.collection_stats.last_collection);
+            document.getElementById('lastCollection').textContent = lastCollection.toLocaleDateString();
+        }
+
+        const successRate = stats.collection_stats.total_collections > 0
+            ? Math.round((stats.collection_stats.successful_collections / stats.collection_stats.total_collections) * 100)
+            : 0;
+        document.getElementById('successRate').textContent = successRate + '%';
+
+        // Update AI news statistics
+        if (stats.ai_stats) {
+            document.getElementById('aiArticlesCount').textContent = stats.ai_stats.total_ai_articles;
+            document.getElementById('aiPercentage').textContent = stats.ai_stats.ai_percentage;
+        }
+
+        // Create charts
+        createSentimentChart(stats.article_stats.sentiment_distribution);
+        createSourceChart(stats.article_stats.source_distribution);
     } catch (error) {
         console.error('Error loading statistics:', error);
         hideLoadingWithError('totalArticles', 'Error loading stats');
     }
 }
 
-async function loadDatabaseStatus() {
+async function loadDatabaseStatus(stats) {
     try {
-        const response = await fetchWithTimeout('/api/news/stats');
-        const data = await response.json();
+        if (!stats) {
+            console.error('No stats data provided to loadDatabaseStatus');
+            return;
+        }
 
-        if (data.success && data.data.database_stats) {
-            const dbStats = data.data.database_stats;
-            const sourceDistribution = data.data.article_stats.source_distribution;
+        if (stats.database_stats) {
+            const dbStats = stats.database_stats;
+            const sourceDistribution = stats.article_stats.source_distribution;
             const content = document.getElementById('databaseStatusContent');
 
             let statusHtml = `

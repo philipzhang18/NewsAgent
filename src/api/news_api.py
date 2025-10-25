@@ -648,20 +648,39 @@ def get_sources():
 		else:
 			all_articles = db_articles
 
-		# Count articles by source
+		# Count articles by source, collector, and combined key
 		source_counts = {}
+		collector_counts = {}
+		source_collector_counts = {}  # Track by (source_name, collector) pairs
 		source_last_updated = {}
 
 		for article in all_articles:
 			source_name = article.get('source_name') if isinstance(article, dict) else article.source_name
+			collector = article.get('collector') if isinstance(article, dict) else getattr(article, 'collector', None)
+
 			if source_name:
 				source_counts[source_name] = source_counts.get(source_name, 0) + 1
+
+				# Track by (source_name, collector) combination
+				if collector:
+					key = (source_name, collector)
+					source_collector_counts[key] = source_collector_counts.get(key, 0) + 1
 
 				# Track last updated time
 				pub_date = article.get('published_at') if isinstance(article, dict) else (article.published_at.isoformat() if article.published_at else None)
 				if pub_date:
 					if source_name not in source_last_updated or pub_date > source_last_updated[source_name]:
 						source_last_updated[source_name] = pub_date
+
+			# Also count by collector (for NewsAPI, Reddit, Twitter, etc.)
+			if collector:
+				collector_counts[collector] = collector_counts.get(collector, 0) + 1
+
+				# Track last updated time for collectors
+				pub_date = article.get('published_at') if isinstance(article, dict) else (article.published_at.isoformat() if article.published_at else None)
+				if pub_date:
+					if collector not in source_last_updated or pub_date > source_last_updated[collector]:
+						source_last_updated[collector] = pub_date
 
 		# Generate dynamic update times
 		now = datetime.utcnow()
@@ -682,47 +701,75 @@ def get_sources():
 			else:
 				source_type = "API"
 
-			# Find matching article count with improved logic
+			# Find matching article count with improved logic to avoid duplicate counting
 			article_count = 0
 			last_updated = now.isoformat() + 'Z'
 
-			# Log source_counts for debugging
-			if source_counts:
-				logger.debug(f"Matching '{source.name}' against source_counts: {list(source_counts.keys())}")
+			# Log counts for debugging
+			if source_counts or collector_counts:
+				logger.debug(f"Matching '{source.name}' (type: {source_type}) against source_counts: {list(source_counts.keys())}")
+				logger.debug(f"Matching '{source.name}' against collector_counts: {list(collector_counts.keys())}")
 
-			# Smart matching logic for different source types
-			matched_sources = []
-			for src_name, count in source_counts.items():
-				matched = False
+			# Strategy depends on source type to avoid duplicate counting
+			if source_type == "RSS":
+				# For RSS sources, match by (source_name, "RSS") to avoid counting NewsAPI articles
+				matched_sources = []
+				for (src_name, collector_name), count in source_collector_counts.items():
+					if collector_name == "RSS":
+						# Match RSS articles by source name
+						matched = False
+						if source.name.lower() == src_name.lower():
+							matched = True
+						elif source.name.lower() in src_name.lower() or src_name.lower() in source.name.lower():
+							matched = True
 
-				# Exact match (case-insensitive)
-				if source.name.lower() == src_name.lower():
-					matched = True
-				# Reddit-specific matching: "Reddit News" matches "Reddit/r/..."
-				elif "reddit" in source.name.lower() and "reddit" in src_name.lower():
-					matched = True
-				# Twitter-specific matching: "Twitter News" matches "Twitter/..."
-				elif "twitter" in source.name.lower() and "twitter" in src_name.lower():
-					matched = True
-				# Exa AI-specific matching: "Exa AI" matches "Exa AI Search" or contains "exa"
-				elif "exa" in source.name.lower() and "exa" in src_name.lower():
-					matched = True
-				# NewsAPI-specific matching: only exact "NewsAPI" match
-				elif source.name.lower() == "newsapi" and src_name.lower() == "newsapi":
-					matched = True
-				# Generic partial match for other sources
-				elif source.name.lower() in src_name.lower() or src_name.lower() in source.name.lower():
-					matched = True
+						if matched:
+							article_count += count
+							matched_sources.append(src_name)
+							if pub_date := source_last_updated.get(src_name):
+								if not last_updated or pub_date > last_updated:
+									last_updated = pub_date
 
-				if matched:
-					article_count += count
-					if pub_date := source_last_updated.get(src_name):
-						if not last_updated or pub_date > last_updated:
-							last_updated = pub_date
-					matched_sources.append(src_name)
+				if matched_sources:
+					logger.debug(f"RSS source '{source.name}' matched: {matched_sources}, total: {article_count}")
 
-			if matched_sources:
-				logger.debug(f"Source '{source.name}' matched: {matched_sources}, total articles: {article_count}")
+			elif source_type == "API" or source_type == "Social":
+				# For API/Social sources (NewsAPI, Reddit, Twitter), match by collector name
+				matched_by_collector = False
+				for collector_name, count in collector_counts.items():
+					matched = False
+
+					if source.name.lower() == collector_name.lower():
+						matched = True
+					elif "newsapi" in source.name.lower() and "newsapi" in collector_name.lower():
+						matched = True
+					elif "reddit" in source.name.lower() and "reddit" in collector_name.lower():
+						matched = True
+					elif "twitter" in source.name.lower() and "twitter" in collector_name.lower():
+						matched = True
+					elif "exa" in source.name.lower() and "exa" in collector_name.lower():
+						matched = True
+
+					if matched:
+						article_count += count
+						matched_by_collector = True
+						if pub_date := source_last_updated.get(collector_name):
+							if not last_updated or pub_date > last_updated:
+								last_updated = pub_date
+						logger.debug(f"API/Social source '{source.name}' matched by collector '{collector_name}': {count} articles")
+						break
+
+				# Special case: Exa AI Search might be stored with collector="RSS"
+				# Try matching by source_name if not matched by collector
+				if not matched_by_collector and "exa" in source.name.lower():
+					for (src_name, collector_name), count in source_collector_counts.items():
+						if "exa" in src_name.lower():
+							article_count += count
+							if pub_date := source_last_updated.get(src_name):
+								if not last_updated or pub_date > last_updated:
+									last_updated = pub_date
+							logger.debug(f"API source '{source.name}' matched by source_name '{src_name}': {count} articles")
+							break
 
 			sources.append({
 				"id": source_id,
