@@ -244,6 +244,7 @@ class RedditCollector(BaseCollector):
                 content=content,
                 summary=summary,
                 source_name=f"Reddit/r/{subreddit_name}",
+                collector="Reddit",
                 url=url,
                 published_at=published_at,
                 collected_at=datetime.now(timezone.utc),

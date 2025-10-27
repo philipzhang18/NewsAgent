@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 import logging
 import requests
 import asyncio
+from werkzeug.exceptions import BadRequest
 
 from ..services.news_collector_service import NewsCollectorService
 from ..processors.news_processor import NewsProcessor
@@ -55,12 +56,40 @@ if not sqlite_storage.is_connected():
 
 def run_async(coro):
 	"""Helper to run async functions in sync Flask context."""
+	# Create a new event loop for this execution
+	loop = asyncio.new_event_loop()
+	asyncio.set_event_loop(loop)
 	try:
-		loop = asyncio.get_event_loop()
-	except RuntimeError:
-		loop = asyncio.new_event_loop()
-		asyncio.set_event_loop(loop)
-	return loop.run_until_complete(coro)
+		return loop.run_until_complete(coro)
+	finally:
+		# Keep the loop set for potential reuse in the same thread
+		pass
+
+def validate_limit_parameter(limit: int, min_val: int = 1, max_val: int = 10000) -> int:
+	"""
+	Validate the limit parameter for API endpoints.
+
+	Args:
+		limit: The limit value to validate
+		min_val: Minimum allowed value (default: 1)
+		max_val: Maximum allowed value (default: 10000, matches MAX_ARTICLES in SQLite storage)
+
+	Returns:
+		int: The validated limit value
+
+	Raises:
+		BadRequest: If the limit is invalid
+	"""
+	if limit is None:
+		raise BadRequest("limit parameter cannot be None")
+
+	if not isinstance(limit, int):
+		raise BadRequest(f"limit must be an integer, got {type(limit).__name__}")
+
+	if limit < min_val or limit > max_val:
+		raise BadRequest(f"limit must be between {min_val} and {max_val}, got {limit}")
+
+	return limit
 
 # AI related keywords for filtering
 AI_KEYWORDS = [
@@ -245,7 +274,10 @@ def _map_newsapi_article(item: Dict[str, Any]) -> Dict[str, Any]:
 def get_articles():
 	"""Get recent articles with optional filtering. Try SQLite first, then collector service, then NewsAPI."""
 	try:
-		limit = request.args.get('limit', 50, type=int)
+		# Validate and get limit parameter (max 10000 to match database MAX_ARTICLES)
+		limit_raw = request.args.get('limit', 50, type=int)
+		limit = validate_limit_parameter(limit_raw, min_val=1, max_val=10000)
+
 		query = request.args.get('q')
 		country = request.args.get('country', 'us')
 		category = request.args.get('category')
@@ -459,6 +491,10 @@ def get_articles():
 				"source": "mock"
 			}
 		})
+	except BadRequest as e:
+		# BadRequest should return 400, not 500
+		logger.warning(f"Bad request for articles: {str(e)}")
+		return jsonify({"success": False, "error": str(e)}), 400
 	except Exception as e:
 		logger.error(f"Error getting articles: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
@@ -1193,8 +1229,10 @@ def reprocess_articles():
 	try:
 		logger.info("Starting article reprocessing...")
 
-		# Get limit from request
-		limit = request.args.get('limit', 100, type=int)
+		# Validate and get limit parameter (max 10000 to match database MAX_ARTICLES)
+		limit_raw = request.args.get('limit', 100, type=int)
+		limit = validate_limit_parameter(limit_raw, min_val=1, max_val=10000)
+
 		force_all = request.args.get('force_all', 'false').lower() == 'true'
 
 		# Get articles from database
@@ -1282,6 +1320,13 @@ def reprocess_articles():
 			}
 		})
 
+	except BadRequest as e:
+		# BadRequest should return 400, not 500
+		logger.warning(f"Bad request for reprocess: {str(e)}")
+		return jsonify({
+			"success": False,
+			"error": str(e)
+		}), 400
 	except Exception as e:
 		logger.error(f"Error reprocessing articles: {str(e)}")
 		return jsonify({

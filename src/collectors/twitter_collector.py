@@ -44,7 +44,7 @@ class TwitterCollector(BaseCollector):
             if settings.TWITTER_BEARER_TOKEN:
                 self.client = tweepy.Client(
                     bearer_token=settings.TWITTER_BEARER_TOKEN,
-                    wait_on_rate_limit=True
+                    wait_on_rate_limit=False  # Don't wait on rate limit to avoid blocking
                 )
                 logger.info("Twitter client initialized with Bearer Token (API v2)")
 
@@ -68,7 +68,7 @@ class TwitterCollector(BaseCollector):
                     consumer_secret=settings.TWITTER_API_SECRET,
                     access_token=settings.TWITTER_ACCESS_TOKEN,
                     access_token_secret=settings.TWITTER_ACCESS_TOKEN_SECRET,
-                    wait_on_rate_limit=True
+                    wait_on_rate_limit=False  # Don't wait on rate limit to avoid blocking
                 )
                 logger.info("Twitter client initialized with OAuth 1.0a")
 
@@ -320,6 +320,7 @@ class TwitterCollector(BaseCollector):
                 content=content,
                 summary=content[:200] if len(content) > 200 else content,
                 source_name=f"Twitter/@{author_name}",
+                collector="Twitter",
                 url=url,
                 published_at=published_at,
                 collected_at=datetime.now(timezone.utc),

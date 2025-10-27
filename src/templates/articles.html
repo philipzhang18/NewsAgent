@@ -135,7 +135,7 @@ async function loadArticles() {
             aiSummarySection.style.display = 'none';
         }
 
-        let url = '/api/news/articles?limit=1000';
+        let url = '/api/news/articles?limit=10000';
         if (aiOnly) {
             url += '&ai_only=true';
         }
@@ -157,7 +157,17 @@ async function loadArticles() {
         }
 
         const articles = (data.data && data.data.articles) ? data.data.articles : [];
-        countBadge.textContent = `${articles.length} articles`;
+        const source = data.data.source || 'unknown';
+        const aiFiltered = data.data.ai_filtered || false;
+
+        // Display count with source information
+        let countText = `${articles.length} articles`;
+        if (source === 'local_database') {
+            countText += ' (from local database)';
+        } else if (source === 'newsapi') {
+            countText += ' (from NewsAPI)';
+        }
+        countBadge.textContent = countText;
 
         if (!articles.length) {
             container.innerHTML = `
@@ -345,7 +355,7 @@ async function generateAISummary() {
             <div>
                 <h6 class="fw-bold"><i class="fas fa-newspaper"></i> Top Articles</h6>
                 <ul class="list-unstyled mb-0">
-                    ${summary.top_articles.map(article => `
+                    ${summary.top_20_articles.map(article => `
                         <li class="mb-2">
                             <a href="${article.url}" target="_blank" class="text-decoration-none">
                                 ${article.title}

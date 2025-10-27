@@ -35,5 +35,9 @@ data/
 !data/sample_data.py
 temp/
 
+# Test and debugging files
+tests/manual/
+docs/bug-reports/
+
 # Claude Code settings
 .claude/

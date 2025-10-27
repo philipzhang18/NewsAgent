@@ -58,7 +58,9 @@ class SQLiteStorageService:
                 summary TEXT,
                 url TEXT,
                 source_name TEXT,
+                collector TEXT,
                 source_type TEXT,
+                source_display TEXT,
                 published_at TEXT,
                 collected_at TEXT,
                 author TEXT,
@@ -70,6 +72,22 @@ class SQLiteStorageService:
                 metadata TEXT
             )
         ''')
+
+        # Add source_display column to existing tables (migration)
+        try:
+            cursor.execute("ALTER TABLE articles ADD COLUMN source_display TEXT")
+            logger.info("Added source_display column to articles table")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+
+        # Add collector column to existing tables (migration)
+        try:
+            cursor.execute("ALTER TABLE articles ADD COLUMN collector TEXT")
+            logger.info("Added collector column to articles table")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
 
         # Create indexes for better search performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_source_name ON articles(source_name)')
@@ -155,15 +173,31 @@ class SQLiteStorageService:
             tags_json = json.dumps(article.tags) if article.tags else None
 
             # Convert metadata to JSON string
-            metadata_json = json.dumps(article.metadata) if hasattr(article, 'metadata') and article.metadata else None
+            metadata_json = json.dumps(article.metadata) if article.metadata else None
+
+            # Use source_display from article or generate it
+            if article.source_display:
+                source_display = article.source_display
+            else:
+                # Generate source_display field (e.g., "CNN-RSS News", "NewsAPI-API News")
+                source_type_str = article.source_type.value if article.source_type else 'unknown'
+                source_type_map = {
+                    'rss': 'RSS',
+                    'api': 'API',
+                    'social_media': 'Social',
+                    'web': 'Web',
+                    'unknown': 'Unknown'
+                }
+                source_type_label = source_type_map.get(source_type_str, source_type_str.upper())
+                source_display = f"{article.source_name}-{source_type_label} News" if article.source_name else f"{source_type_label} News"
 
             # Insert or replace article
             cursor.execute('''
                 INSERT OR REPLACE INTO articles (
-                    id, title, content, summary, url, source_name, source_type,
+                    id, title, content, summary, url, source_name, collector, source_type, source_display,
                     published_at, collected_at, author, category, tags,
                     sentiment, bias_score, word_count, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 article.id,
                 article.title,
@@ -171,15 +205,17 @@ class SQLiteStorageService:
                 article.summary or '',
                 article.url,
                 article.source_name,
-                article.source_type.value if hasattr(article, 'source_type') and article.source_type else '',
+                article.collector or '',
+                article.source_type.value if article.source_type else 'unknown',
+                source_display,
                 article.published_at.isoformat() if article.published_at else None,
-                article.collected_at.isoformat() if hasattr(article, 'collected_at') and article.collected_at else datetime.now().isoformat(),
-                article.author if hasattr(article, 'author') else '',
+                article.collected_at.isoformat() if article.collected_at else datetime.now().isoformat(),
+                article.author or '',
                 article.category,
                 tags_json,
-                article.sentiment.value if hasattr(article, 'sentiment') and article.sentiment else None,
-                article.bias_score if hasattr(article, 'bias_score') else None,
-                article.word_count if hasattr(article, 'word_count') else len(article.content.split()),
+                article.sentiment.value if article.sentiment else None,
+                article.bias_score,
+                article.word_count if article.word_count else len(article.content.split()),
                 metadata_json
             ))
 
@@ -269,7 +305,9 @@ class SQLiteStorageService:
                 query += ' AND sentiment = ?'
                 params.append(sentiment)
 
-            query += ' ORDER BY published_at DESC LIMIT ? OFFSET ?'
+            # Use COALESCE to ensure articles with NULL published_at are still included
+            # Falls back to collected_at if published_at is NULL
+            query += ' ORDER BY COALESCE(published_at, collected_at) DESC LIMIT ? OFFSET ?'
             params.extend([limit, offset])
 
             cursor.execute(query, params)
@@ -295,7 +333,7 @@ class SQLiteStorageService:
                 SELECT a.* FROM articles a
                 INNER JOIN articles_fts fts ON a.id = fts.id
                 WHERE articles_fts MATCH ?
-                ORDER BY a.published_at DESC
+                ORDER BY COALESCE(a.published_at, a.collected_at) DESC
                 LIMIT ?
             ''', (query, limit))
 

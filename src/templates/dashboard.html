@@ -294,14 +294,49 @@ function hideLoadingWithError(containerId, message = 'Failed to load data') {
     }
 }
 
+// Polling interval reference for cleanup
+let pollInterval = null;
+
+function startPolling() {
+    // Clear any existing interval
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+
+    // Start new polling interval (30 seconds)
+    pollInterval = setInterval(loadDashboardData, 30000);
+}
+
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+}
+
+// Handle page visibility changes to save resources
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        // Page is hidden, stop polling to save resources
+        stopPolling();
+        console.log('Dashboard polling stopped (page hidden)');
+    } else {
+        // Page is visible again, reload data and restart polling
+        console.log('Dashboard polling resumed (page visible)');
+        loadDashboardData();
+        startPolling();
+    }
+});
+
 document.addEventListener('DOMContentLoaded', function() {
     // Wait a bit for Chart.js to load if using defer
     setTimeout(() => {
         loadDashboardData();
     }, 100);
 
-    // Refresh data every 30 seconds
-    setInterval(loadDashboardData, 30000);
+    // Start polling
+    startPolling();
 });
 
 async function loadDashboardData() {

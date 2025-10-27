@@ -98,6 +98,7 @@ class RSSCollector(BaseCollector):
                 content=content,
                 url=url,
                 source_name=self.source.name,
+                collector="RSS",
                 source_type=self.source.source_type,
                 published_at=published_at,
                 who=who,

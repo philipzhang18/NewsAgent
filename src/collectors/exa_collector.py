@@ -224,6 +224,7 @@ class ExaCollector(BaseCollector):
                 content=content,
                 summary=summary,
                 source_name="Exa AI Search",
+                collector="Exa AI",
                 url=url,
                 published_at=published_at or datetime.now(timezone.utc),
                 collected_at=datetime.now(timezone.utc),

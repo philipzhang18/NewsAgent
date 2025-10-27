@@ -30,9 +30,11 @@ class NewsArticle:
 	summary: Optional[str] = None
 	url: str = ""
 	source_name: str = ""
+	collector: str = ""  # The collector used (NewsAPI, Reddit, Twitter, RSS, Exa AI)
 	source_type: SourceType = SourceType.API
 	published_at: Optional[datetime] = None
 	collected_at: datetime = field(default_factory=datetime.utcnow)
+	author: Optional[str] = None  # Article author
 	language: str = "en"
 	category: Optional[str] = None
 	tags: List[str] = field(default_factory=list)
@@ -53,6 +55,8 @@ class NewsArticle:
 	is_processed: bool = False
 	is_verified: bool = False
 	is_duplicate: bool = False
+	source_display: Optional[str] = None  # Display format: "Source-Type News"
+	metadata: Optional[Dict[str, Any]] = None  # Additional metadata
 
 	def to_dict(self) -> Dict[str, Any]:
 		return {
@@ -62,9 +66,11 @@ class NewsArticle:
 			"summary": self.summary,
 			"url": self.url,
 			"source_name": self.source_name,
+			"collector": self.collector,
 			"source_type": self.source_type.value,
 			"published_at": self.published_at.isoformat() if self.published_at else None,
 			"collected_at": self.collected_at.isoformat(),
+			"author": self.author,
 			"language": self.language,
 			"category": self.category,
 			"tags": self.tags,
@@ -85,6 +91,8 @@ class NewsArticle:
 			"is_processed": self.is_processed,
 			"is_verified": self.is_verified,
 			"is_duplicate": self.is_duplicate,
+			"source_display": self.source_display,
+			"metadata": self.metadata,
 		}
 
 	@classmethod
