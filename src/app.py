@@ -29,8 +29,8 @@ def run_async(coro):
     try:
         return loop.run_until_complete(coro)
     finally:
-        # Keep the loop set for potential reuse in the same thread
-        pass
+        # Clean up the loop to prevent resource leaks
+        loop.close()
 
 def create_app():
     """Create and configure Flask application."""

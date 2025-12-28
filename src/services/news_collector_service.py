@@ -2,8 +2,6 @@ import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import schedule
-import time
 import uuid
 
 from ..collectors.base_collector import BaseCollector
@@ -58,29 +56,37 @@ class NewsCollectorService:
         if self.is_running:
             logger.warning("News collection service is already running")
             return
-        
+
         self.is_running = True
         logger.info("Starting news collection service...")
-        
+
         try:
-            # Schedule collection tasks
-            for collector in self.collectors.values():
-                schedule.every(collector.source.collection_interval).seconds.do(
-                    self._run_collector, collector
-                )
-            
             # Run initial collection
             await self._run_all_collectors()
-            
-            # Start scheduled collection loop
-            while self.is_running:
-                schedule.run_pending()
-                await asyncio.sleep(1)
-                
+
+            # Start periodic collection tasks for each collector
+            tasks = []
+            for collector in self.collectors.values():
+                task = asyncio.create_task(self._periodic_collector(collector))
+                tasks.append(task)
+
+            # Wait for all tasks (they run until is_running is False)
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
         except Exception as e:
             logger.error(f"Error in collection cycle: {str(e)}")
         finally:
             self.is_running = False
+
+    async def _periodic_collector(self, collector: BaseCollector):
+        """Run a collector periodically."""
+        try:
+            while self.is_running:
+                await asyncio.sleep(collector.source.collection_interval)
+                await self._run_collector(collector)
+        except Exception as e:
+            logger.error(f"Error in periodic collector {collector.collector_id}: {str(e)}")
     
     async def stop_collection_service(self):
         """Stop the news collection service."""

@@ -103,7 +103,7 @@ AI_KEYWORDS = [
 
 def is_ai_related(article: Dict[str, Any]) -> bool:
 	"""Check if an article is AI-related based on title and content."""
-	text = (article.get('title', '') + ' ' + article.get('summary', '') + ' ' + article.get('content', '')).lower()
+	text = ((article.get('title') or '') + ' ' + (article.get('summary') or '') + ' ' + (article.get('content') or '')).lower()
 	return any(keyword in text for keyword in AI_KEYWORDS)
 
 @news_api.route('/status', methods=['GET'])
@@ -174,6 +174,7 @@ def get_status():
 					params = {"apiKey": settings.NEWS_API_KEY, "pageSize": 100, "country": "us"}
 					endpoint = "https://newsapi.org/v2/top-headlines"
 					resp = requests.get(endpoint, params=params, timeout=10)
+					resp.encoding = 'utf-8'
 					resp.raise_for_status()
 					data = resp.json()
 					articles = data.get("articles", [])
@@ -410,6 +411,7 @@ def get_articles():
 						params.update({"category": category})
 
 				resp = requests.get(endpoint, params=params, timeout=10)
+				resp.encoding = 'utf-8'
 				resp.raise_for_status()
 				data = resp.json()
 				articles = data.get("articles", [])
@@ -559,6 +561,7 @@ def trigger_collection():
 					}
 
 					response = requests.get('https://newsapi.org/v2/everything', params=params, timeout=30)
+					response.encoding = 'utf-8'
 					response.raise_for_status()
 					data = response.json()
 
@@ -568,8 +571,8 @@ def trigger_collection():
 
 						for article_data in articles:
 							# Double-check if article is AI-related
-							title = article_data.get('title', '')
-							description = article_data.get('description', '')
+							title = article_data.get('title') or ''
+							description = article_data.get('description') or ''
 							text_to_check = (title + ' ' + description).lower()
 
 							# Filter for AI-related content
@@ -1833,9 +1836,9 @@ def generate_ai_summary():
 {chr(10).join([f"{i+1}. 标题：{a['title']} | 来源：{a['source']} | 情绪：{a['sentiment']}" for i, a in enumerate(articles_data[:20])])}
 
 【核心要求】
-⚠️ **字数严格要求**：全文必须达到600-800个中文字（不含标点），不得少于600字，也不要超过850字。
+⚠️ **字数严格要求**：全文必须达到900-1100个中文字（不含标点），不得少于900字，也不要超过1200字。
 
-1️⃣ **报告结构**（必须包含以下4个部分，每部分150-200字）
+1️⃣ **报告结构**（必须包含以下4个部分，每部分220-280字）
 - **第一段：总体趋势与情绪分化**
   开篇点明舆论整体态势，用数据说话（正面{positive_pct}%、负面{negative_pct}%、中性{neutral_pct}%），分析情绪分化的深层原因（技术突破vs监管担忧、创新热潮vs就业焦虑、商业机遇vs伦理挑战等），不要简单罗列数据，要解释"为什么"会出现这样的分布。
 
@@ -1868,7 +1871,7 @@ def generate_ai_summary():
 【示例开头】（风格参考，勿照抄）
 "从过去一个月收集的超过七百条AI相关新闻来看，全球舆论正呈现出前所未有的复杂分化。数据显示，仅有不到四分之一的报道（23.9%）带有积极色彩，聚焦于技术突破与商业落地；而超过半数（53.9%）的报道保持中立观望态度，这种克制本身就耐人寻味——它意味着媒体与公众正在从盲目乐观转向审慎评估。更值得警惕的是，负面报道虽占比13.2%，但其议题集中度极高，围绕监管收紧、隐私侵犯、就业替代等核心焦虑反复发酵。总体而言，AI正从单一的技术神话叙事，步入一个理性与反思、机遇与风险并存的新阶段……"
 
-⚠️ 请确保最终输出达到600-800中文字，内容充实、观点鲜明、分析深入。现在开始生成："""
+⚠️ 请确保最终输出达到900-1100中文字，内容充实、观点鲜明、分析深入。现在开始生成："""
 
 				# Call OpenAI API
 				try:
@@ -1881,7 +1884,7 @@ def generate_ai_summary():
 							{"role": "system", "content": "你是一位资深的AI产业观察员和科技媒体评论员，具有深厚的行业洞察力和媒体写作功底。你擅长从海量新闻数据中提取趋势、识别模式、洞察情绪变化，并能够提出犀利而有见地的观点和判断。你的分析报告逻辑严密、数据扎实、观点鲜明，既有宏观视野又有微观洞察。"},
 							{"role": "user", "content": prompt}
 						],
-						max_tokens=2500,
+						max_tokens=4000,
 						temperature=0.8
 					)
 
@@ -1891,63 +1894,82 @@ def generate_ai_summary():
 				except Exception as openai_error:
 					logger.warning(f"Failed to call OpenAI API: {str(openai_error)}, falling back to template")
 
-					# Fallback: Generate comprehensive template-based summary (600-800 chars)
+					# Fallback: Generate comprehensive template-based summary (900-1100 chars)
 					# Calculate additional metrics
 					neutral_dominant = neutral_pct > 50
 					positive_ratio = positive_count / max(negative_count, 1)
 
-					# Part 1: Overall sentiment and trend analysis (150-200 chars)
+					# Part 1: Overall sentiment and trend analysis (220-280 chars)
 					ai_summary = (
-						f"从近期收集的{total_articles}篇AI相关新闻来看，全球舆论正呈现出耐人寻味的分化格局。"
+						f"从近期收集的{total_articles}篇AI相关新闻来看，全球舆论正呈现出前所未有的复杂分化格局。"
 						f"数据显示，仅有{positive_pct}%的报道（{positive_count}篇）带有明确的积极色彩，这一比例显著低于行业早期的乐观氛围，"
 						f"反映出公众和媒体对AI技术的态度正从狂热追捧转向审慎评估。值得关注的是，超过半数的报道（{neutral_pct}%，共{neutral_count}篇）"
 						f"采取中立观望立场，这种集体性的克制本身就是一个强烈信号——AI正从炒作期步入理性期。"
 						f"同时，{negative_pct}%的负面报道（{negative_count}篇）虽占比不高，但其议题集中度极强，主要围绕监管收紧、隐私侵犯、"
-						f"就业替代等核心焦虑反复发酵，对舆论场的影响力不容小觑。\n\n"
+						f"就业替代等核心焦虑反复发酵，对舆论场的影响力不容小觑。这种情绪分化的背后，既有技术本身的复杂性，也有商业利益、政策导向、"
+						f"社会心理等多重因素的交织作用，预示着AI产业正步入一个充满不确定性但又充满可能性的新阶段。\n\n"
 					)
 
-					# Part 2: Core topics and focal points (150-200 chars)
+					# Part 2: Core topics and focal points (220-280 chars)
 					top_keywords = ', '.join(trending_topics[:6]) if trending_topics else 'AI技术、大模型、监管政策'
 					ai_summary += (
 						f"从关键词热度来看，{top_keywords}等主题反复出现，折射出当前AI舆论的三大焦点。"
 						f"首先是大模型竞争白热化：OpenAI、Anthropic、Google、Meta等科技巨头的角力不仅是技术比拼，更是商业生态的卡位战，"
-						f"媒体报道中既有对技术突破的赞叹，也有对垄断隐患的担忧。其次是AI应用落地进入深水区：医疗诊断、教育辅助、金融风控等垂直场景的探索"
-						f"正从概念验证走向规模化部署，但实际效果与预期存在落差，导致报道情绪趋于谨慎。第三是监管政策密集出台：欧盟AI法案、美国行政令、"
-						f"各国数据保护法规的收紧，让AI企业在创新与合规之间疲于奔命，这种政策不确定性也成为负面情绪的主要来源。\n\n"
+						f"媒体报道中既有对技术突破的赞叹，也有对垄断隐患的担忧，这种矛盾心态恰恰反映了当下AI发展的两面性。"
+						f"其次是AI应用落地进入深水区：医疗诊断、教育辅助、金融风控等垂直场景的探索"
+						f"正从概念验证走向规模化部署，但实际效果与预期存在落差，导致报道情绪趋于谨慎。特别是在实际业务场景中，AI的准确性、可解释性、"
+						f"成本效益等问题频频暴露，让市场从早期的过度期待回归到冷静评估。第三是监管政策密集出台：欧盟AI法案、美国行政令、"
+						f"各国数据保护法规的收紧，让AI企业在创新与合规之间疲于奔命，这种政策不确定性也成为负面情绪的主要来源。值得注意的是，"
+						f"不同地区的监管思路存在明显分歧，欧洲强调风险管控，美国注重竞争优势，中国则在安全与发展之间寻求平衡，这种监管格局的分化"
+						f"也在一定程度上加剧了全球AI产业的复杂性和不确定性。\n\n"
 					)
 
-					# Part 3: Media attitude and propagation patterns (150-200 chars)
+					# Part 3: Media attitude and propagation patterns (220-280 chars)
 					ai_summary += (
 						f"新闻来源分布显示，{source_summary}等媒体贡献了主要报道。对比不同类型媒体的报道倾向，可以发现明显差异：传统权威媒体如Guardian、"
-						f"Times of India更倾向于深度调查和政策解读，语气相对克制；而Yahoo Entertainment等新兴平台则更关注热点事件和话题性内容，"
-						f"情绪表达更为直接。有趣的是，负面报道在社交媒体的传播速度明显快于正面报道，这反映出'焦虑比乐观更具传染性'的舆论传播规律。"
-						f"同时，涉及就业替代、隐私泄露的报道往往能引发更高的互动和转发，揭示出公众对AI技术的深层担忧远超表面数据所显示的程度。\n\n"
+						f"Times of India更倾向于深度调查和政策解读，语气相对克制，试图在技术进步与社会影响之间保持平衡视角；"
+						f"而Yahoo Entertainment等新兴平台则更关注热点事件和话题性内容，"
+						f"情绪表达更为直接，往往通过吸睛标题和争议性角度来吸引流量。更值得关注的是，负面报道在社交媒体的传播速度明显快于正面报道，"
+						f"这反映出'焦虑比乐观更具传染性'的舆论传播规律。"
+						f"同时，涉及就业替代、隐私泄露的报道往往能引发更高的互动和转发，点击率通常是技术进展类报道的2-3倍，"
+						f"揭示出公众对AI技术的深层担忧远超表面数据所显示的程度。这种传播特性也在一定程度上放大了负面情绪的影响力，"
+						f"使得即便负面报道在数量上不占优势，其在公众认知中的权重却可能被显著高估。从媒体生态的角度看，"
+						f"这种传播不对称性提醒我们需要更加审慎地理解舆论数据，不能简单地将报道数量等同于真实的社会态度。\n\n"
 					)
 
-					# Part 4: Future trends and analyst stance (150-200 chars)
+					# Part 4: Future trends and analyst stance (220-280 chars)
 					if positive_count > negative_count * 1.5:
 						stance = "谨慎乐观"
 						reasoning = (
 							f"尽管积极报道占比仅为{positive_pct}%，但考虑到技术迭代的加速趋势和商业应用的持续拓展，AI产业的基本面依然向好。"
-							f"当前的舆论降温更多是市场回归理性的健康调整，而非技术路径的根本性质疑。"
+							f"当前的舆论降温更多是市场回归理性的健康调整，而非技术路径的根本性质疑。特别是在垂直行业的应用探索中，"
+							f"虽然遇到了一些挑战，但这些挑战本身就是技术成熟的必经之路。从历史经验来看，任何颠覆性技术都会经历从狂热到理性的转变，"
+							f"AI当前的处境恰恰证明它正在从实验室走向真实世界，从理论探索进入实践检验阶段。"
 						)
 					elif negative_count > positive_count:
 						stance = "保持警惕"
 						reasoning = (
 							f"负面报道虽占比{negative_pct}%，但其影响力被严重低估。监管压力、伦理争议、技术滥用等问题若得不到妥善解决，"
-							f"可能引发更大规模的信任危机，进而拖累整个产业的发展进程。"
+							f"可能引发更大规模的信任危机，进而拖累整个产业的发展进程。尤其令人担忧的是，当前的负面情绪主要集中在就业替代、"
+							f"隐私安全等涉及公众切身利益的领域，这些问题一旦发酵，很容易演变成社会性焦虑。而且，从传播规律来看，"
+							f"负面情绪的扩散速度远快于正面情绪，这意味着即便负面报道在数量上不占主导，其对公众认知的塑造力却可能远超我们的预期。"
 						)
 					else:
 						stance = "理性审视"
 						reasoning = (
 							f"正负情绪的相对平衡反映出AI正处于关键转折点。技术潜力与现实风险并存，乐观主义与悲观论调交织，"
-							f"这种复杂性要求我们既不盲目追捧，也不一味否定，而是以更成熟的心态推动AI向善发展。"
+							f"这种复杂性要求我们既不盲目追捧，也不一味否定，而是以更成熟的心态推动AI向善发展。当前这种舆论格局实际上是健康的，"
+							f"它表明社会对AI的认知正在走向多元化和理性化。不同于早期一边倒的技术崇拜，现在的讨论更加注重平衡，"
+							f"更加关注技术应用的实际效果和社会影响，这种转变本身就是社会成熟度提升的体现。"
 						)
 
 					ai_summary += (
 						f"展望未来，我持'{stance}'态度。{reasoning}"
 						f"从舆论数据来看，AI正从技术神话走向社会共识的拐点，这既是挑战，更是机遇。只有正视问题、回应关切、完善治理，"
 						f"AI才能真正从实验室的宠儿成长为推动人类进步的可靠力量。当前这场理性与反思的洗礼，或许正是AI迈向成熟所必须经历的成人礼。"
+						f"更重要的是，我们需要认识到，AI的发展不是一场非黑即白的赛跑，而是一个需要技术创新、政策引导、伦理约束、"
+						f"社会共识多方协同的系统工程。只有在这种多元对话和理性博弈中，AI才能找到真正可持续的发展路径，"
+						f"最终实现技术进步与社会福祉的双赢。从这个意义上说，当前的舆论分化不是危机，而是AI走向成熟的必然标志。"
 					)
 
 			except Exception as e:

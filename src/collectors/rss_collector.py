@@ -1,5 +1,6 @@
 import asyncio
 import feedparser
+import requests
 import logging
 from typing import List, Optional
 from datetime import datetime
@@ -34,11 +35,15 @@ class RSSCollector(BaseCollector):
         try:
             logger.info(f"Collecting news from RSS feed: {self.source.url}")
 
-            # Parse RSS feed
-            feed = self.feed_parser.parse(self.source.url)
+            # Fetch RSS feed with explicit UTF-8 encoding
+            response = requests.get(self.source.url, timeout=30)
+            response.encoding = 'utf-8'
 
-            if feed.status != 200:
-                raise Exception(f"RSS feed returned status {feed.status}")
+            # Parse RSS feed from the properly encoded content
+            feed = self.feed_parser.parse(response.text)
+
+            if feed.get('status', 200) != 200:
+                raise Exception(f"RSS feed returned status {feed.get('status', 'unknown')}")
 
             # Use the configured source name (from data_collection_service)
             # Do not override with feed title to maintain consistency
