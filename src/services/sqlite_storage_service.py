@@ -22,9 +22,10 @@ class SQLiteStorageService:
     # Maximum number of articles to store
     MAX_ARTICLES = 10000
 
-    def __init__(self, db_path: str = "data/news_articles.db"):
+    def __init__(self, db_path: str = None):
         """Initialize SQLite storage service."""
-        self.db_path = db_path
+        from ..config.settings import settings
+        self.db_path = db_path or settings.SQLITE_DB_PATH
         self.conn: Optional[sqlite3.Connection] = None
         self._ensure_db_directory()
 
@@ -38,6 +39,9 @@ class SQLiteStorageService:
         try:
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row  # Enable column access by name
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+            self.conn.execute("PRAGMA cache_size=-64000")
             self._create_tables()
             logger.info(f"Successfully connected to SQLite database at {self.db_path}")
             return True
@@ -267,31 +271,51 @@ class SQLiteStorageService:
             row = cursor.fetchone()
 
             if row:
-                return dict(row)
+                return self._normalize_row(row)
             return None
 
         except Exception as e:
             logger.error(f"Error getting article {article_id}: {str(e)}")
             return None
 
+    def _normalize_row(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert a database row to a normalized article dict."""
+        data = dict(row)
+        if data.get("tags") and isinstance(data["tags"], str):
+            try:
+                data["tags"] = json.loads(data["tags"])
+            except json.JSONDecodeError:
+                data["tags"] = []
+        if data.get("metadata") and isinstance(data["metadata"], str):
+            try:
+                data["metadata"] = json.loads(data["metadata"])
+            except json.JSONDecodeError:
+                data["metadata"] = {}
+        return data
+
     async def get_articles(
         self,
         limit: int = 50,
         offset: int = 0,
+        skip: Optional[int] = None,
         source_name: Optional[str] = None,
         category: Optional[str] = None,
-        sentiment: Optional[str] = None
+        sentiment: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
         """Get articles with optional filtering."""
         if not self.is_connected():
             return []
 
+        if skip is not None:
+            offset = skip
+
         try:
             cursor = self.conn.cursor()
 
-            # Build query
             query = 'SELECT * FROM articles WHERE 1=1'
-            params = []
+            params: List[Any] = []
 
             if source_name:
                 query += ' AND source_name = ?'
@@ -305,20 +329,76 @@ class SQLiteStorageService:
                 query += ' AND sentiment = ?'
                 params.append(sentiment)
 
-            # Use COALESCE to ensure articles with NULL published_at are still included
-            # Falls back to collected_at if published_at is NULL
+            if start_date:
+                query += ' AND COALESCE(published_at, collected_at) >= ?'
+                params.append(start_date.isoformat())
+
+            if end_date:
+                query += ' AND COALESCE(published_at, collected_at) <= ?'
+                params.append(end_date.isoformat())
+
             query += ' ORDER BY COALESCE(published_at, collected_at) DESC LIMIT ? OFFSET ?'
             params.extend([limit, offset])
 
             cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            articles = [dict(row) for row in rows]
-            return articles
+            return [self._normalize_row(row) for row in cursor.fetchall()]
 
         except Exception as e:
             logger.error(f"Error getting articles: {str(e)}")
             return []
+
+    async def delete_article(self, article_id: str) -> bool:
+        """Delete a single article by ID."""
+        if not self.is_connected():
+            return False
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('DELETE FROM articles WHERE id = ?', (article_id,))
+            cursor.execute('DELETE FROM articles_fts WHERE id = ?', (article_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error deleting article {article_id}: {str(e)}")
+            return False
+
+    async def delete_articles_before(self, cutoff_date: datetime) -> int:
+        """Delete articles collected or published before cutoff_date."""
+        if not self.is_connected():
+            return 0
+
+        try:
+            cursor = self.conn.cursor()
+            cutoff = cutoff_date.isoformat()
+            cursor.execute(
+                '''
+                DELETE FROM articles
+                WHERE COALESCE(published_at, collected_at) < ?
+                ''',
+                (cutoff,),
+            )
+            deleted = cursor.rowcount
+            cursor.execute(
+                '''
+                DELETE FROM articles_fts
+                WHERE id NOT IN (SELECT id FROM articles)
+                '''
+            )
+            self.conn.commit()
+            logger.info(f"Deleted {deleted} articles before {cutoff}")
+            return deleted
+        except Exception as e:
+            logger.error(f"Error deleting old articles: {str(e)}")
+            return 0
+
+    async def query_articles(self, filters: Dict[str, Any], limit: int = 100) -> List[Dict[str, Any]]:
+        """Query articles using simple filter dict (source_name, sentiment, category)."""
+        return await self.get_articles(
+            limit=limit,
+            source_name=filters.get("source_name"),
+            category=filters.get("category"),
+            sentiment=filters.get("sentiment"),
+        )
 
     async def search_articles(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Search articles by text query using full-text search."""
@@ -338,9 +418,7 @@ class SQLiteStorageService:
             ''', (query, limit))
 
             rows = cursor.fetchall()
-            articles = [dict(row) for row in rows]
-
-            return articles
+            return [self._normalize_row(row) for row in rows]
 
         except Exception as e:
             logger.error(f"Error searching articles: {str(e)}")
@@ -409,6 +487,25 @@ class SQLiteStorageService:
         except Exception as e:
             logger.error(f"Error getting statistics: {str(e)}")
             return {}
+
+    async def count_articles_today(self) -> int:
+        """Count articles published or collected today (local date)."""
+        if not self.is_connected():
+            return 0
+        try:
+            today = datetime.now().date().isoformat()
+            cursor = self.conn.cursor()
+            cursor.execute(
+                '''
+                SELECT COUNT(*) as count FROM articles
+                WHERE COALESCE(published_at, collected_at) >= ?
+                ''',
+                (today,),
+            )
+            return cursor.fetchone()['count']
+        except Exception as e:
+            logger.error(f"Error counting today's articles: {e}")
+            return 0
 
 
 # Global instance

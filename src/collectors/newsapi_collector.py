@@ -295,13 +295,13 @@ class NewsAPICollector(BaseCollector):
             logger.error(f"Error parsing NewsAPI article: {str(e)}")
             return None
 
-    def get_collector_stats(self) -> Dict[str, Any]:
-        """Get collector statistics."""
-        stats = super().get_collector_stats()
+    def get_status(self) -> Dict[str, Any]:
+        """Get collector status."""
+        status = super().get_status()
 
-        stats.update({
+        status.update({
             "api_key_configured": bool(self.api_key and self.api_key != "your_newsapi_key_here"),
             "base_url": self.base_url
         })
 
-        return stats
+        return status

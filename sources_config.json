@@ -23,14 +23,34 @@
       "url": "http://rss.cnn.com/rss/edition.rss",
       "max_articles": 50,
       "is_active": true
+    }
+  ],
+  "api_sources": [
+    {
+      "name": "NewsAPI",
+      "url": "https://newsapi.org/v2",
+      "max_articles": 100,
+      "is_active": true
     },
     {
-      "name": "Reuters",
-      "url": "https://www.reuters.com/rssFeed/worldNews",
+      "name": "The Guardian API",
+      "url": "https://content.guardianapis.com",
+      "max_articles": 50,
+      "is_active": true
+    },
+    {
+      "name": "NYTimes API",
+      "url": "https://api.nytimes.com",
       "max_articles": 50,
       "is_active": true
     }
   ],
-  "api_sources": [],
-  "social_sources": []
+  "social_sources": [
+    {
+      "name": "Reddit News",
+      "url": "https://www.reddit.com",
+      "max_articles": 50,
+      "is_active": true
+    }
+  ]
 }

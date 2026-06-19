@@ -23,9 +23,16 @@ class RSSCollector(BaseCollector):
     async def validate_source(self) -> bool:
         """Validate RSS feed accessibility."""
         try:
-            # Test feed parsing
-            feed = self.feed_parser.parse(self.source.url)
-            return feed.status == 200 and len(feed.entries) > 0
+            response = requests.get(
+                self.source.url,
+                timeout=settings.REQUEST_TIMEOUT,
+                headers={"User-Agent": settings.USER_AGENT},
+            )
+            response.encoding = 'utf-8'
+            if response.status_code != 200:
+                return False
+            feed = self.feed_parser.parse(response.text)
+            return len(feed.entries) > 0
         except Exception as e:
             logger.error(f"Error validating RSS source {self.source.url}: {str(e)}")
             return False
@@ -36,7 +43,11 @@ class RSSCollector(BaseCollector):
             logger.info(f"Collecting news from RSS feed: {self.source.url}")
 
             # Fetch RSS feed with explicit UTF-8 encoding
-            response = requests.get(self.source.url, timeout=30)
+            response = requests.get(
+                self.source.url,
+                timeout=settings.REQUEST_TIMEOUT,
+                headers={"User-Agent": settings.USER_AGENT},
+            )
             response.encoding = 'utf-8'
 
             # Parse RSS feed from the properly encoded content

@@ -3,7 +3,6 @@
 News Agent - Main Entry Point
 """
 
-import asyncio
 import logging
 import sys
 import os
@@ -35,7 +34,7 @@ def main():
         # Validate settings
         if not settings.validate():
             logger.error("Invalid configuration. Please check your environment variables.")
-            logger.error("Required: OPENAI_API_KEY, NEWS_API_KEY")
+            logger.error("Required: OPENAI_API_KEY")
             sys.exit(1)
         
         logger.info("Starting News Agent application...")

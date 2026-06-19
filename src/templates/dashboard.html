@@ -1,161 +1,117 @@
 {% extends "base.html" %}
 
 {% block title %}Dashboard - News Agent{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block page_title %}<span data-i18n="page_dashboard">Dashboard</span>{% endblock %}
 
 {% block content %}
+<!-- AI News Collection - Single Entry Point -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="card-body p-4">
+                <div class="row align-items-center">
+                    <div class="col-md-1 text-center d-none d-md-block">
+                        <i class="fas fa-robot fa-3x text-white" style="opacity:0.85;"></i>
+                    </div>
+                    <div class="col-md-6">
+                        <h4 class="text-white mb-1">
+                            <i class="fas fa-brain me-2 d-md-none"></i>AI News Collection
+                        </h4>
+                        <p class="text-white-50 mb-0 small">Collect AI-related news from all configured sources (NewsAPI, Guardian, NYTimes, RSS, Reddit)</p>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="d-flex align-items-center justify-content-end gap-3 mt-3 mt-md-0">
+                            <div class="btn-group" role="group">
+                                <input type="radio" class="btn-check" name="collectDays" id="days7" value="7" checked>
+                                <label class="btn btn-outline-light btn-sm" for="days7">7 Days</label>
+                                <input type="radio" class="btn-check" name="collectDays" id="days30" value="30">
+                                <label class="btn btn-outline-light btn-sm" for="days30">30 Days</label>
+                            </div>
+                            <button class="btn btn-light btn-lg px-4" id="collectBtn" onclick="collectAINews()">
+                                <i class="fas fa-search me-2"></i>Collect
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Progress/Result area -->
+                <div id="collectResult" class="mt-3" style="display:none;">
+                    <div class="alert alert-light mb-0 py-2" id="collectResultContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
 <div class="row">
-    <!-- Statistics Cards -->
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
                 <i class="fas fa-newspaper fa-2x mb-2"></i>
                 <div class="stats-number" id="totalArticles">-</div>
-                <div>Total Articles</div>
+                <div data-i18n="total_articles">Total Articles</div>
             </div>
         </div>
     </div>
-
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
                 <i class="fas fa-rss fa-2x mb-2"></i>
                 <div class="stats-number" id="activeSources">-</div>
-                <div>Active Sources</div>
+                <div data-i18n="active_sources">Active Sources</div>
             </div>
         </div>
     </div>
-
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
                 <i class="fas fa-clock fa-2x mb-2"></i>
                 <div class="stats-number" id="lastCollection">-</div>
-                <div>Last Collection</div>
+                <div data-i18n="last_collection">Last Collection</div>
             </div>
         </div>
     </div>
-
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card stats-card h-100">
             <div class="card-body text-center">
                 <i class="fas fa-chart-line fa-2x mb-2"></i>
                 <div class="stats-number" id="successRate">-</div>
-                <div>Success Rate</div>
+                <div data-i18n="success_rate">Success Rate</div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- AI News Statistics Card -->
+<!-- Source Stats + API Status -->
 <div class="row">
-    <div class="col-12 mb-4">
-        <div class="card ai-news-card" style="cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;" onclick="goToAINews()">
-            <div class="card-body">
-                <div class="row align-items-center">
-                    <div class="col-md-2 text-center">
-                        <i class="fas fa-robot fa-4x" style="opacity: 0.9;"></i>
-                    </div>
-                    <div class="col-md-7">
-                        <h4 class="mb-2">
-                            <i class="fas fa-brain me-2"></i>
-                            AI News Intelligence
-                        </h4>
-                        <p class="mb-2">
-                            Track the latest developments in Artificial Intelligence, Machine Learning, and emerging AI technologies.
-                        </p>
-                        <div class="d-flex align-items-center">
-                            <span class="badge bg-light text-dark me-2">
-                                <span id="aiArticlesCount">-</span> AI Articles
-                            </span>
-                            <span class="badge bg-light text-dark">
-                                <span id="aiPercentage">-</span>% of Total
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-3 text-center">
-                        <button class="btn btn-light btn-lg" onclick="goToAINews(); event.stopPropagation();">
-                            <i class="fas fa-arrow-right me-2"></i>
-                            View AI News
-                        </button>
-                        <p class="mt-2 mb-0 small">
-                            Click to explore all AI-related articles
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <!-- Quick Actions & API Status -->
-    <div class="col-lg-12 mb-4">
-        <div class="card border-info">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-bolt"></i> Quick Actions & API Status
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <!-- Quick Actions -->
-                    <div class="col-lg-6 border-end">
-                        <h6 class="mb-3"><i class="fas fa-rocket"></i> Quick Actions</h6>
-                        <div class="d-grid gap-2">
-                            <button class="btn btn-secondary btn-lg" onclick="collect7DaysNews()">
-                                <i class="fas fa-calendar-week me-2"></i> Collect 7-Day News
-                            </button>
-                            <button class="btn btn-primary btn-lg" onclick="triggerCollection()">
-                                <i class="fas fa-robot me-2"></i> Collect 7-Day AI News
-                            </button>
-                            <button class="btn btn-success btn-lg" onclick="showStoredArticles()">
-                                <i class="fas fa-database me-2"></i> View All Stored Articles
-                            </button>
-                            <button class="btn btn-info btn-lg" onclick="window.location.href='/articles?ai_only=true'">
-                                <i class="fas fa-newspaper me-2"></i> Browse AI News
-                            </button>
-                            <button class="btn btn-warning btn-lg" onclick="reprocessArticles()">
-                                <i class="fas fa-brain me-2"></i> Reprocess Sentiment
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- API Configuration Status -->
-                    <div class="col-lg-6">
-                        <h6 class="mb-3"><i class="fas fa-key"></i> API Configuration Status</h6>
-                        <div id="apiConfigStatus">
-                            <div class="text-center">
-                                <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
-                                <small class="ms-2">Checking API status...</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <!-- Database Storage Status -->
-    <div class="col-lg-12 mb-4">
-        <div class="card border-primary">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="fas fa-database"></i> Database Storage Status
-                </h5>
-                <button class="btn btn-light btn-sm" onclick="showStoredArticles()">
-                    <i class="fas fa-eye"></i> View Stored Articles
+    <div class="col-lg-7 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-database"></i> Source Statistics</h5>
+                <button class="btn btn-outline-primary btn-sm" onclick="showStoredArticles()">
+                    <i class="fas fa-list"></i> View All
                 </button>
             </div>
             <div class="card-body">
-                <div id="databaseStatusContent">
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Loading database status...</p>
+                <div id="sourceStatsContent">
+                    <div class="text-center py-3">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <small class="ms-2">Loading...</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-key"></i> API Status</h5>
+            </div>
+            <div class="card-body">
+                <div id="apiConfigStatus">
+                    <div class="text-center py-3">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <small class="ms-2">Checking...</small>
                     </div>
                 </div>
             </div>
@@ -163,28 +119,22 @@
     </div>
 </div>
 
+<!-- Charts -->
 <div class="row">
-    <!-- Sentiment Distribution -->
     <div class="col-lg-6 mb-4">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="fas fa-smile"></i> Sentiment Distribution
-                </h5>
+                <h5 class="mb-0"><i class="fas fa-smile"></i> Sentiment Distribution</h5>
             </div>
             <div class="card-body">
                 <canvas id="sentimentChart"></canvas>
             </div>
         </div>
     </div>
-
-    <!-- Source Distribution -->
     <div class="col-lg-6 mb-4">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="fas fa-chart-pie"></i> Source Distribution
-                </h5>
+                <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Source Distribution</h5>
             </div>
             <div class="card-body">
                 <canvas id="sourceChart"></canvas>
@@ -193,25 +143,19 @@
     </div>
 </div>
 
+<!-- Latest Articles -->
 <div class="row">
-    <!-- Latest Articles -->
     <div class="col-12 mb-4">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="fas fa-newspaper"></i> Latest Articles
-                </h5>
-                <a href="/articles" class="btn btn-primary btn-sm">
-                    View All Articles
-                </a>
+                <h5 class="mb-0"><i class="fas fa-newspaper"></i> Latest Articles</h5>
+                <a href="/articles?ai_only=true" class="btn btn-primary btn-sm">View All</a>
             </div>
             <div class="card-body">
                 <div id="latestArticlesContent">
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Loading latest articles...</p>
+                    <div class="text-center py-3">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <small class="ms-2">Loading...</small>
                     </div>
                 </div>
             </div>
@@ -219,24 +163,19 @@
     </div>
 </div>
 
-
 <!-- Stored Articles Modal -->
-<div class="modal fade" id="storedArticlesModal" tabindex="-1" aria-labelledby="storedArticlesModalLabel" aria-hidden="true">
+<div class="modal fade" id="storedArticlesModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="storedArticlesModalLabel">
-                    <i class="fas fa-database"></i> Stored Articles
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title"><i class="fas fa-database"></i> Stored Articles</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div id="storedArticlesContent">
                     <div class="text-center py-4">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Loading stored articles...</p>
+                        <div class="spinner-border text-primary"></div>
+                        <p class="mt-2">Loading...</p>
                     </div>
                 </div>
             </div>
@@ -252,111 +191,109 @@
 <script src="{{ url_for('static', filename='js/chart.min.js') }}" defer></script>
 <script defer>
 let sentimentChart, sourceChart;
+const API_TIMEOUT = 10000;
 
-// Timeout configuration
-const API_TIMEOUT = 10000; // 10 seconds timeout for API calls
-const RETRY_DELAY = 2000; // 2 seconds delay before retry
-
-// Fetch with timeout wrapper
 async function fetchWithTimeout(url, options = {}, timeout = API_TIMEOUT) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
-
     try {
-        const response = await fetch(url, {
-            ...options,
-            signal: controller.signal
-        });
+        const response = await fetch(url, { ...options, signal: controller.signal });
         clearTimeout(id);
         return response;
     } catch (error) {
         clearTimeout(id);
-        if (error.name === 'AbortError') {
-            throw new Error('Request timeout');
-        }
+        if (error.name === 'AbortError') throw new Error('Request timeout');
         throw error;
     }
 }
 
-// Hide loading spinner with error display
-function hideLoadingWithError(containerId, message = 'Failed to load data') {
-    const container = document.getElementById(containerId);
-    if (container) {
-        container.innerHTML = `
-            <div class="alert alert-warning">
-                <i class="fas fa-exclamation-triangle"></i>
-                ${message}
-                <button class="btn btn-sm btn-outline-warning ms-2" onclick="location.reload()">
-                    <i class="fas fa-redo"></i> Retry
-                </button>
-            </div>
-        `;
-    }
-}
-
-// Polling interval reference for cleanup
+// Polling
 let pollInterval = null;
-
 function startPolling() {
-    // Clear any existing interval
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-    }
-
-    // Start new polling interval (30 seconds)
+    if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(loadDashboardData, 30000);
 }
-
 function stopPolling() {
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-    }
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 }
-
-// Handle page visibility changes to save resources
 document.addEventListener('visibilitychange', function() {
-    if (document.hidden) {
-        // Page is hidden, stop polling to save resources
-        stopPolling();
-        console.log('Dashboard polling stopped (page hidden)');
-    } else {
-        // Page is visible again, reload data and restart polling
-        console.log('Dashboard polling resumed (page visible)');
-        loadDashboardData();
-        startPolling();
-    }
+    if (document.hidden) { stopPolling(); } else { loadDashboardData(); startPolling(); }
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Wait a bit for Chart.js to load if using defer
-    setTimeout(() => {
-        loadDashboardData();
-    }, 100);
-
-    // Start polling
+    setTimeout(() => { loadDashboardData(); }, 100);
     startPolling();
 });
 
+// === COLLECT AI NEWS ===
+async function collectAINews() {
+    const days = document.querySelector('input[name="collectDays"]:checked').value;
+    const btn = document.getElementById('collectBtn');
+    const resultDiv = document.getElementById('collectResult');
+    const resultContent = document.getElementById('collectResultContent');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Collecting...';
+    resultDiv.style.display = 'block';
+    resultContent.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Collecting AI news from all sources for the past ' + days + ' days...';
+
+    try {
+        const response = await fetchWithTimeout('/api/news/collect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({days: parseInt(days)})
+        }, 300000); // 5 min timeout
+
+        const data = await response.json();
+
+        if (data.success) {
+            const d = data.data;
+            const sourceDetails = Object.entries(d.sources || {}).map(([k,v]) => `${k}: ${v}`).join(', ');
+            resultContent.innerHTML = `
+                <i class="fas fa-check-circle text-success me-2"></i>
+                <strong>${d.saved_to_db}</strong> AI articles saved
+                (${d.total_collected} collected, ${d.failed} skipped)
+                <br><small class="text-muted">Sources: ${sourceDetails}</small>
+            `;
+            btn.innerHTML = '<i class="fas fa-check me-2"></i>Done!';
+            btn.classList.remove('btn-light');
+            btn.classList.add('btn-success');
+            setTimeout(() => { loadDashboardData(); }, 1000);
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search me-2"></i>Collect';
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-light');
+            }, 4000);
+        } else {
+            throw new Error(data.error || 'Collection failed');
+        }
+    } catch (error) {
+        resultContent.innerHTML = `<i class="fas fa-times-circle text-danger me-2"></i> ${error.message}`;
+        btn.innerHTML = '<i class="fas fa-times me-2"></i>Failed';
+        btn.classList.remove('btn-light');
+        btn.classList.add('btn-danger');
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-search me-2"></i>Collect';
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-light');
+        }, 3000);
+    }
+}
+
+// === LOAD DASHBOARD DATA ===
 async function loadDashboardData() {
     try {
-        // Load stats data once and share it between functions
-        const statsPromise = loadStatsData();
-
-        // Load all components in parallel with timeout
         await Promise.allSettled([
-            loadAPIConfigStatus(),
-            statsPromise.then(stats => {
-                if (stats) {
-                    loadStatistics(stats);
-                    loadDatabaseStatus(stats);
-                }
+            loadStatsData().then(stats => {
+                if (stats) { loadStatistics(stats); loadSourceStats(stats); }
             }),
+            loadAPIConfigStatus(),
             loadLatestArticles()
         ]);
     } catch (error) {
-        console.error('Error loading dashboard data:', error);
+        console.error('Error loading dashboard:', error);
     }
 }
 
@@ -364,656 +301,227 @@ async function loadStatsData() {
     try {
         const response = await fetchWithTimeout('/api/news/stats');
         const data = await response.json();
-
-        if (data.success) {
-            return data.data;
-        }
-        return null;
+        return data.success ? data.data : null;
     } catch (error) {
-        console.error('Error loading stats data:', error);
+        console.error('Error loading stats:', error);
         return null;
     }
+}
+
+function loadStatistics(stats) {
+    if (!stats) return;
+    document.getElementById('totalArticles').textContent = stats.database_stats?.stored_articles || stats.collection_stats?.total_articles || 0;
+    document.getElementById('activeSources').textContent = stats.database_stats?.unique_sources || 0;
+
+    if (stats.collection_stats?.last_collection) {
+        const d = new Date(stats.collection_stats.last_collection);
+        document.getElementById('lastCollection').textContent = d.toLocaleDateString();
+    }
+
+    const rate = stats.collection_stats?.total_collections > 0
+        ? Math.round((stats.collection_stats.successful_collections / stats.collection_stats.total_collections) * 100)
+        : 100;
+    document.getElementById('successRate').textContent = rate + '%';
+
+    createSentimentChart(stats.article_stats?.sentiment_distribution || {});
+    createSourceChart(stats.article_stats?.source_distribution || {});
+}
+
+function loadSourceStats(stats) {
+    const container = document.getElementById('sourceStatsContent');
+    const dist = stats.article_stats?.source_distribution || {};
+    const total = stats.database_stats?.stored_articles || 0;
+
+    if (!total || Object.keys(dist).length === 0) {
+        container.innerHTML = '<p class="text-muted text-center mb-0">No articles collected yet. Click "Collect" above to get started.</p>';
+        return;
+    }
+
+    // Sort by count descending, show top 15
+    const sorted = Object.entries(dist).sort((a, b) => b[1] - a[1]);
+    const topSources = sorted.slice(0, 15);
+    const otherCount = sorted.slice(15).reduce((sum, [, c]) => sum + c, 0);
+
+    let html = `<div class="d-flex justify-content-between align-items-center mb-3">
+        <span><strong>${total}</strong> articles from <strong>${sorted.length}</strong> sources</span>
+    </div>`;
+
+    html += '<div style="max-height: 320px; overflow-y: auto;">';
+    topSources.forEach(([name, count]) => {
+        const pct = total > 0 ? Math.round(count / total * 100) : 0;
+        const barWidth = Math.max(2, pct);
+        html += `
+            <div class="d-flex align-items-center mb-2">
+                <div class="text-truncate me-2" style="width:140px; font-size:0.82rem;" title="${name}">${name}</div>
+                <div class="flex-grow-1 me-2">
+                    <div class="progress" style="height:8px;">
+                        <div class="progress-bar" style="width:${barWidth}%; background: linear-gradient(90deg, #667eea, #764ba2);"></div>
+                    </div>
+                </div>
+                <div style="width:60px; text-align:right; font-size:0.82rem;"><strong>${count}</strong> <small class="text-muted">${pct}%</small></div>
+            </div>
+        `;
+    });
+
+    if (otherCount > 0) {
+        const otherPct = total > 0 ? Math.round(otherCount / total * 100) : 0;
+        html += `
+            <div class="d-flex align-items-center mb-2 text-muted">
+                <div class="text-truncate me-2" style="width:140px; font-size:0.82rem;">Others (${sorted.length - 15})</div>
+                <div class="flex-grow-1 me-2">
+                    <div class="progress" style="height:8px;">
+                        <div class="progress-bar bg-secondary" style="width:${Math.max(2, otherPct)}%;"></div>
+                    </div>
+                </div>
+                <div style="width:60px; text-align:right; font-size:0.82rem;"><strong>${otherCount}</strong> <small>${otherPct}%</small></div>
+            </div>
+        `;
+    }
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 async function loadAPIConfigStatus() {
     try {
+        const response = await fetchWithTimeout('/api/news/api-config-status');
+        const data = await response.json();
         const content = document.getElementById('apiConfigStatus');
 
-        // Get API status from new dedicated endpoint
-        try {
-            const response = await fetchWithTimeout('/api/news/api-config-status');
-            const data = await response.json();
-
-            if (data.success && data.data) {
-                const apis = data.data;
-                let statusHtml = '<div class="list-group list-group-flush">';
-
-                apis.forEach(api => {
-                    const badge = api.configured
-                        ? `<span class="badge bg-success"><i class="fas fa-check"></i> Configured</span>`
-                        : `<span class="badge bg-secondary"><i class="fas fa-times"></i> Not Set</span>`;
-
-                    // Use icon_type from API response, or default to 'fas'
-                    const iconType = api.icon_type || 'fas';
-
-                    statusHtml += `
-                        <div class="list-group-item d-flex justify-content-between align-items-center py-2">
-                            <div>
-                                <i class="${iconType} fa-${api.icon} text-${api.color} me-2"></i>
-                                <strong>${api.name}</strong>
-                            </div>
-                            ${badge}
-                        </div>
-                    `;
-                });
-
-                statusHtml += `</div>
-                    <div class="mt-3 text-center">
-                        <small class="text-muted">
-                            <i class="fas fa-info-circle"></i>
-                            Configure API keys in <code>.env</code> file
-                        </small>
+        if (data.success && data.data) {
+            let html = '<div class="list-group list-group-flush">';
+            data.data.forEach(api => {
+                const badge = api.configured
+                    ? '<span class="badge bg-success"><i class="fas fa-check"></i></span>'
+                    : '<span class="badge bg-secondary"><i class="fas fa-times"></i></span>';
+                const iconType = api.icon_type || 'fas';
+                html += `
+                    <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center">
+                        <span><i class="${iconType} fa-${api.icon} text-${api.color} me-2"></i>${api.name}</span>
+                        ${badge}
                     </div>
                 `;
-
-                content.innerHTML = statusHtml;
-                return;
-            }
-        } catch (error) {
-            console.error('Error fetching API config status:', error);
-        }
-
-        // Fallback to manual display
-        content.innerHTML = `
-            <div class="alert alert-warning mb-0">
-                <i class="fas fa-exclamation-triangle"></i>
-                Failed to load API configuration status
-            </div>
-        `;
-
-    } catch (error) {
-        console.error('Error loading API config status:', error);
-        const content = document.getElementById('apiConfigStatus');
-        content.innerHTML = `
-            <div class="alert alert-warning mb-0">
-                <i class="fas fa-exclamation-triangle"></i>
-                Failed to load API configuration status
-            </div>
-        `;
-    }
-}
-
-async function collect7DaysNews() {
-    try {
-        const button = event.target;
-        const originalHtml = button.innerHTML;
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Collecting 7-day news...';
-
-        const response = await fetchWithTimeout('/api/news/collect-7days', {
-            method: 'POST'
-        }, 300000); // 5 minute timeout for 7-day collection
-
-        const data = await response.json();
-
-        if (data.success) {
-            button.innerHTML = '<i class="fas fa-check me-2"></i> Success!';
-            button.classList.remove('btn-secondary');
-            button.classList.add('btn-success');
-
-            // Show detailed results
-            const resultMsg = `Successfully collected ${data.data.saved_to_db} articles from the past 7 days!\n\n` +
-                            `Total collected: ${data.data.total_collected}\n` +
-                            `Saved to database: ${data.data.saved_to_db}\n` +
-                            `Failed: ${data.data.failed}\n\n` +
-                            `Sources: ${Object.entries(data.data.sources).map(([k,v]) => `${k}: ${v}`).join(', ')}`;
-
-            alert(resultMsg);
-
-            // Refresh dashboard after 2 seconds
-            setTimeout(() => {
-                location.reload();
-            }, 2000);
-        } else {
-            throw new Error(data.error || 'Collection failed');
+            });
+            html += '</div>';
+            content.innerHTML = html;
         }
     } catch (error) {
-        console.error('Error collecting 7-day news:', error);
-        const button = event.target;
-        button.innerHTML = '<i class="fas fa-times me-2"></i> Failed';
-        button.classList.remove('btn-secondary');
-        button.classList.add('btn-danger');
-
-        alert('Failed to collect 7-day news: ' + error.message);
-
-        setTimeout(() => {
-            button.disabled = false;
-            button.innerHTML = '<i class="fas fa-calendar-week me-2"></i> Collect 7-Day News';
-            button.classList.remove('btn-danger');
-            button.classList.add('btn-secondary');
-        }, 3000);
-    }
-}
-
-async function triggerCollection() {
-    try {
-        const button = event.target;
-        const originalHtml = button.innerHTML;
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Collecting...';
-
-        const response = await fetchWithTimeout('/api/news/collect', {
-            method: 'POST'
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            button.innerHTML = '<i class="fas fa-check me-2"></i> Success!';
-            button.classList.remove('btn-primary');
-            button.classList.add('btn-success');
-
-            // Refresh dashboard after 2 seconds
-            setTimeout(() => {
-                location.reload();
-            }, 2000);
-        } else {
-            throw new Error(data.error || 'Collection failed');
-        }
-    } catch (error) {
-        console.error('Error triggering collection:', error);
-        const button = event.target;
-        button.innerHTML = '<i class="fas fa-times me-2"></i> Failed';
-        button.classList.remove('btn-primary');
-        button.classList.add('btn-danger');
-
-        alert('Failed to trigger collection: ' + error.message);
-
-        setTimeout(() => {
-            button.disabled = false;
-            button.innerHTML = '<i class="fas fa-robot me-2"></i> Collect 7-Day AI News';
-            button.classList.remove('btn-danger');
-            button.classList.add('btn-primary');
-        }, 3000);
-    }
-}
-
-async function reprocessArticles() {
-    try {
-        if (!confirm('This will reprocess all articles for sentiment analysis. Continue?')) {
-            return;
-        }
-
-        const button = event.target;
-        const originalHtml = button.innerHTML;
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Processing...';
-
-        const response = await fetchWithTimeout('/api/news/reprocess?force_all=true', {
-            method: 'POST'
-        }, 60000); // 60 second timeout for reprocessing
-
-        const data = await response.json();
-
-        if (data.success) {
-            button.innerHTML = '<i class="fas fa-check me-2"></i> Done!';
-            button.classList.remove('btn-warning');
-            button.classList.add('btn-success');
-
-            alert(`Successfully reprocessed ${data.data.updated_articles} articles!`);
-
-            // Refresh dashboard after 2 seconds
-            setTimeout(() => {
-                location.reload();
-            }, 2000);
-        } else {
-            throw new Error(data.error || 'Reprocessing failed');
-        }
-    } catch (error) {
-        console.error('Error reprocessing articles:', error);
-        const button = event.target;
-        button.innerHTML = '<i class="fas fa-times me-2"></i> Failed';
-        button.classList.remove('btn-warning');
-        button.classList.add('btn-danger');
-
-        alert('Failed to reprocess articles: ' + error.message);
-
-        setTimeout(() => {
-            button.disabled = false;
-            button.innerHTML = '<i class="fas fa-brain me-2"></i> Reprocess Sentiment';
-            button.classList.remove('btn-danger');
-            button.classList.add('btn-warning');
-        }, 3000);
-    }
-}
-
-async function loadServiceStatus() {
-    try {
-        const response = await fetchWithTimeout('/api/news/status');
-        const data = await response.json();
-        
-        if (data.success) {
-            const status = data.data;
-            const content = document.getElementById('serviceStatusContent');
-            
-            let statusHtml = `
-                <div class="row">
-                    <div class="col-6">
-                        <strong>Service Running:</strong><br>
-                        <span class="badge ${status.service_running ? 'bg-success' : 'bg-danger'}">
-                            ${status.service_running ? 'Yes' : 'No'}
-                        </span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Total Collectors:</strong><br>
-                        <span class="badge bg-primary">${status.total_collectors}</span>
-                    </div>
-                </div>
-                <hr>
-                <div class="row">
-                    <div class="col-6">
-                        <strong>Total Collections:</strong><br>
-                        <span class="badge bg-info">${status.collection_stats.total_collections}</span>
-                    </div>
-                    <div class="col-6">
-                        <strong>Total Articles:</strong><br>
-                        <span class="badge bg-success">${status.collection_stats.total_articles}</span>
-                    </div>
-                </div>
-            `;
-            
-            content.innerHTML = statusHtml;
-        }
-    } catch (error) {
-        console.error('Error loading service status:', error);
-        hideLoadingWithError('serviceStatusContent', 'Failed to load service status');
-    }
-}
-
-async function loadStatistics(stats) {
-    try {
-        if (!stats) {
-            console.error('No stats data provided to loadStatistics');
-            return;
-        }
-
-        // Update statistics cards
-        document.getElementById('totalArticles').textContent = stats.collection_stats.total_articles;
-        document.getElementById('activeSources').textContent = stats.collection_stats.total_collections;
-
-        if (stats.collection_stats.last_collection) {
-            const lastCollection = new Date(stats.collection_stats.last_collection);
-            document.getElementById('lastCollection').textContent = lastCollection.toLocaleDateString();
-        }
-
-        const successRate = stats.collection_stats.total_collections > 0
-            ? Math.round((stats.collection_stats.successful_collections / stats.collection_stats.total_collections) * 100)
-            : 0;
-        document.getElementById('successRate').textContent = successRate + '%';
-
-        // Update AI news statistics
-        if (stats.ai_stats) {
-            document.getElementById('aiArticlesCount').textContent = stats.ai_stats.total_ai_articles;
-            document.getElementById('aiPercentage').textContent = stats.ai_stats.ai_percentage;
-        }
-
-        // Create charts
-        createSentimentChart(stats.article_stats.sentiment_distribution);
-        createSourceChart(stats.article_stats.source_distribution);
-    } catch (error) {
-        console.error('Error loading statistics:', error);
-        hideLoadingWithError('totalArticles', 'Error loading stats');
-    }
-}
-
-async function loadDatabaseStatus(stats) {
-    try {
-        if (!stats) {
-            console.error('No stats data provided to loadDatabaseStatus');
-            return;
-        }
-
-        if (stats.database_stats) {
-            const dbStats = stats.database_stats;
-            const sourceDistribution = stats.article_stats.source_distribution;
-            const content = document.getElementById('databaseStatusContent');
-
-            let statusHtml = `
-                <div class="row text-center">
-                    <div class="col-md-4">
-                        <div class="p-3">
-                            <i class="fas fa-file-alt fa-3x text-primary mb-2"></i>
-                            <h3 class="mb-1">${dbStats.stored_articles}</h3>
-                            <small class="text-muted">Stored Articles</small>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-3">
-                            <i class="fas fa-sitemap fa-3x text-success mb-2"></i>
-                            <h3 class="mb-1">${dbStats.unique_sources}</h3>
-                            <small class="text-muted">Unique Sources</small>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-3">
-                            <i class="fas fa-plug fa-3x text-info mb-2"></i>
-                            <h3 class="mb-1">${dbStats.unique_sources > 0 ? 'MULTIPLE' : 'NONE'}</h3>
-                            <small class="text-muted">Data Sources</small>
-                        </div>
-                    </div>
-                </div>
-                <hr>
-                <div class="alert alert-info mb-0">
-                    <i class="fas fa-info-circle"></i>
-                    <strong>Data Source Information:</strong>
-                    <div id="dataSourceDetails"></div>
-                </div>
-            `;
-
-            content.innerHTML = statusHtml;
-
-            // Update data source details with actual source names
-            const detailsDiv = document.getElementById('dataSourceDetails');
-            if (dbStats.stored_articles > 0 && sourceDistribution) {
-                const sourceNames = Object.keys(sourceDistribution);
-                const sourceCounts = Object.entries(sourceDistribution)
-                    .map(([name, count]) => `${name} (${count})`)
-                    .join(', ');
-
-                if (sourceNames.length > 0) {
-                    detailsDiv.innerHTML = `
-                        <div class="mt-2">
-                            Articles are being collected from ${sourceNames.length} source(s): ${sourceCounts}.
-                            All data is stored locally in SQLite database.
-                        </div>
-                    `;
-                } else {
-                    detailsDiv.innerHTML = 'Articles stored locally, source information not available.';
-                }
-            } else {
-                detailsDiv.innerHTML = 'No articles found. Please configure your data sources and run a collection.';
-            }
-        }
-    } catch (error) {
-        console.error('Error loading database status:', error);
-        hideLoadingWithError('databaseStatusContent', 'Failed to load database status');
+        document.getElementById('apiConfigStatus').innerHTML = '<small class="text-muted">Failed to load</small>';
     }
 }
 
 async function loadLatestArticles() {
     try {
-        const response = await fetchWithTimeout('/api/news/articles?limit=5');
+        const response = await fetchWithTimeout('/api/news/articles?limit=6&ai_only=true');
         const data = await response.json();
-        
-        if (data.success) {
+        const content = document.getElementById('latestArticlesContent');
+
+        if (data.success && data.data.articles.length > 0) {
             const articles = data.data.articles;
-            const content = document.getElementById('latestArticlesContent');
-            
-            if (articles.length === 0) {
-                content.innerHTML = '<p class="text-muted text-center">No articles available yet.</p>';
-                return;
-            }
-            
-            let articlesHtml = '<div class="row">';
-            
+            let html = '<div class="row">';
             articles.forEach(article => {
-                const sentimentClass = article.sentiment ? `sentiment-${article.sentiment}` : '';
-                const sentimentIcon = getSentimentIcon(article.sentiment);
-                
-                articlesHtml += `
-                    <div class="col-md-6 mb-3">
-                        <div class="card article-card h-100">
-                            <div class="card-body">
-                                <h6 class="card-title">${article.title}</h6>
-                                <p class="card-text small text-muted">
-                                    ${article.summary || article.content.substring(0, 100)}...
-                                </p>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <small class="text-muted">
-                                        <i class="fas fa-rss"></i> ${article.source_name}
-                                    </small>
-                                    <span class="${sentimentClass}">${sentimentIcon}</span>
+                const sentiment = getSentimentIcon(article.sentiment);
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card h-100 border-0 shadow-sm">
+                            <div class="card-body p-3">
+                                <h6 class="card-title" style="font-size:0.85rem; line-height:1.3;">${article.title}</h6>
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <small class="text-muted"><i class="fas fa-rss"></i> ${article.source_name || ''}</small>
+                                    <span>${sentiment}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 `;
             });
-            
-            articlesHtml += '</div>';
-            content.innerHTML = articlesHtml;
+            html += '</div>';
+            content.innerHTML = html;
+        } else {
+            content.innerHTML = '<p class="text-muted text-center mb-0">No AI articles yet.</p>';
         }
     } catch (error) {
-        console.error('Error loading latest articles:', error);
-        hideLoadingWithError('latestArticlesContent', 'Failed to load latest articles');
+        document.getElementById('latestArticlesContent').innerHTML = '<small class="text-muted">Failed to load</small>';
     }
 }
 
-function createSentimentChart(sentimentData) {
+// === CHARTS ===
+function createSentimentChart(data) {
     const ctx = document.getElementById('sentimentChart');
-    if (!ctx) return;
-
-    // Set canvas parent container height for proper responsive sizing
+    if (!ctx || !data || Object.keys(data).length === 0) return;
     ctx.parentElement.style.position = 'relative';
     ctx.parentElement.style.height = '250px';
-
-    if (sentimentChart) {
-        sentimentChart.destroy();
-    }
-
-    const labels = Object.keys(sentimentData);
-    const data = Object.values(sentimentData);
-    const colors = ['#28a745', '#dc3545', '#6c757d', '#ffc107'];
+    if (sentimentChart) sentimentChart.destroy();
 
     sentimentChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: labels,
-            datasets: [{
-                data: data,
-                backgroundColor: colors,
-                borderWidth: 2,
-                borderColor: '#fff'
-            }]
+            labels: Object.keys(data),
+            datasets: [{ data: Object.values(data), backgroundColor: ['#28a745','#dc3545','#6c757d','#ffc107'], borderWidth: 2, borderColor: '#fff' }]
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                }
-            }
-        }
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
     });
 }
 
-function createSourceChart(sourceData) {
+function createSourceChart(data) {
     const ctx = document.getElementById('sourceChart');
-    if (!ctx) return;
-
-    // Set canvas parent container height for proper responsive sizing
+    if (!ctx || !data || Object.keys(data).length === 0) return;
     ctx.parentElement.style.position = 'relative';
     ctx.parentElement.style.height = '250px';
-
-    if (sourceChart) {
-        sourceChart.destroy();
-    }
-
-    const labels = Object.keys(sourceData);
-    const data = Object.values(sourceData);
+    if (sourceChart) sourceChart.destroy();
 
     sourceChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: labels,
-            datasets: [{
-                label: 'Articles',
-                data: data,
-                backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                borderColor: 'rgba(102, 126, 234, 1)',
-                borderWidth: 1
-            }]
+            labels: Object.keys(data),
+            datasets: [{ label: 'Articles', data: Object.values(data), backgroundColor: 'rgba(102,126,234,0.8)', borderColor: 'rgba(102,126,234,1)', borderWidth: 1 }]
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            },
-            plugins: {
-                legend: {
-                    display: false
-                }
-            }
-        }
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
     });
 }
 
-function getSentimentIcon(sentiment) {
-    if (!sentiment) return '<i class="fas fa-minus"></i>';
-
-    const icons = {
-        'positive': '<i class="fas fa-smile"></i>',
-        'negative': '<i class="fas fa-frown"></i>',
-        'neutral': '<i class="fas fa-meh"></i>',
-        'mixed': '<i class="fas fa-surprise"></i>'
-    };
-
-    return icons[sentiment] || '<i class="fas fa-minus"></i>';
+// === UTILITIES ===
+function getSentimentIcon(s) {
+    const m = { positive: '<i class="fas fa-smile text-success"></i>', negative: '<i class="fas fa-frown text-danger"></i>', neutral: '<i class="fas fa-meh text-secondary"></i>', mixed: '<i class="fas fa-surprise text-warning"></i>' };
+    return m[s] || '<i class="fas fa-minus text-muted"></i>';
 }
 
-function goToAINews() {
-    window.location.href = '/articles?ai_only=true';
+function getSentimentBadge(s) {
+    const m = { positive: '<span class="badge bg-success">Positive</span>', negative: '<span class="badge bg-danger">Negative</span>', neutral: '<span class="badge bg-secondary">Neutral</span>', mixed: '<span class="badge bg-warning">Mixed</span>' };
+    return m[s] || '<span class="badge bg-secondary">N/A</span>';
 }
 
 async function showStoredArticles() {
     const modal = new bootstrap.Modal(document.getElementById('storedArticlesModal'));
     modal.show();
-
     const content = document.getElementById('storedArticlesContent');
-    content.innerHTML = `
-        <div class="text-center py-4">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-2">Loading stored articles...</p>
-        </div>
-    `;
+    content.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div><p class="mt-2">Loading...</p></div>';
 
     try {
         const response = await fetchWithTimeout('/api/news/articles?limit=10000', {}, 30000);
         const data = await response.json();
 
-        console.log('API Response:', data);  // Debug logging
-
         if (data.success && data.data.articles) {
             const articles = data.data.articles;
-            console.log(`Received ${articles.length} articles from API`);  // Debug logging
+            if (articles.length === 0) { content.innerHTML = '<p class="text-muted text-center">No articles stored.</p>'; return; }
 
-            if (articles.length === 0) {
-                content.innerHTML = '<p class="text-muted text-center">No articles stored yet.</p>';
-                return;
-            }
+            let html = `<div class="alert alert-success py-2"><strong>${articles.length}</strong> articles loaded</div>
+                <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
+                <table class="table table-striped table-hover table-sm">
+                <thead class="table-primary sticky-top"><tr><th>#</th><th>Title</th><th>Source</th><th>Collector</th><th>Published</th><th>Sentiment</th><th>Link</th></tr></thead><tbody>`;
 
-            // Build table in chunks to avoid browser freezing
-            let tableHtml = `
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i>
-                    <strong>Successfully loaded:</strong> ${articles.length} articles from local database
-                    ${articles.length >= 10000 ? ' <span class="badge bg-warning">Limit reached (10000 max)</span>' : ''}
-                </div>
-                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
-                    <table class="table table-striped table-hover table-sm">
-                        <thead class="table-primary sticky-top">
-                            <tr>
-                                <th style="width: 5%">#</th>
-                                <th style="width: 30%">Title</th>
-                                <th style="width: 12%">Source Name</th>
-                                <th style="width: 10%">Collector</th>
-                                <th style="width: 15%">Source Display</th>
-                                <th style="width: 12%">Published</th>
-                                <th style="width: 8%">Sentiment</th>
-                                <th style="width: 8%">Link</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-
-            // Process all articles
-            let rowsHtml = '';
-            articles.forEach((article, index) => {
-                const publishedDate = article.published_at
-                    ? new Date(article.published_at).toLocaleDateString()
-                    : 'N/A';
-
-                const sentimentBadge = getSentimentBadge(article.sentiment);
-
-                // Use source_display if available, otherwise fall back to source_name
-                const sourceDisplay = article.source_display || article.source_name || article.source || 'Unknown';
-
-                rowsHtml += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>
-                            <strong>${article.title || 'No title'}</strong>
-                            ${article.summary ? `<br><small class="text-muted">${article.summary.substring(0, 60)}...</small>` : ''}
-                        </td>
-                        <td>
-                            <span class="badge bg-primary">${article.source_name || 'Unknown'}</span>
-                        </td>
-                        <td>
-                            <span class="badge bg-success">${article.collector || 'N/A'}</span>
-                        </td>
-                        <td>
-                            <span class="badge bg-info">${sourceDisplay}</span>
-                        </td>
-                        <td><small>${publishedDate}</small></td>
-                        <td>${sentimentBadge}</td>
-                        <td>
-                            ${article.url ? `<a href="${article.url}" target="_blank" class="btn btn-sm btn-primary"><i class="fas fa-external-link-alt"></i></a>` : '-'}
-                        </td>
-                    </tr>
-                `;
+            articles.forEach((a, i) => {
+                const pubDate = a.published_at ? new Date(a.published_at).toLocaleDateString() : '-';
+                html += `<tr><td>${i+1}</td><td><strong>${a.title||'No title'}</strong></td><td><span class="badge bg-primary">${a.source_name||'?'}</span></td><td><span class="badge bg-success">${a.collector||'-'}</span></td><td><small>${pubDate}</small></td><td>${getSentimentBadge(a.sentiment)}</td><td>${a.url?`<a href="${a.url}" target="_blank"><i class="fas fa-external-link-alt"></i></a>`:'-'}</td></tr>`;
             });
 
-            tableHtml += rowsHtml + `
-                        </tbody>
-                    </table>
-                </div>
-            `;
-
-            console.log(`Built table HTML with ${articles.length} rows`);  // Debug logging
-            content.innerHTML = tableHtml;
-            console.log('Table rendered successfully');  // Debug logging
+            html += '</tbody></table></div>';
+            content.innerHTML = html;
         } else {
-            content.innerHTML = '<p class="text-danger text-center">Failed to load stored articles.</p>';
+            content.innerHTML = '<p class="text-danger text-center">Failed to load.</p>';
         }
     } catch (error) {
-        console.error('Error loading stored articles:', error);
-        content.innerHTML = '<p class="text-danger text-center">Error loading stored articles: ' + error.message + '</p>';
+        content.innerHTML = '<p class="text-danger text-center">Error: ' + error.message + '</p>';
     }
-}
-
-function getSentimentBadge(sentiment) {
-    if (!sentiment) return '<span class="badge bg-secondary">N/A</span>';
-
-    const badges = {
-        'positive': '<span class="badge bg-success">Positive</span>',
-        'negative': '<span class="badge bg-danger">Negative</span>',
-        'neutral': '<span class="badge bg-secondary">Neutral</span>',
-        'mixed': '<span class="badge bg-warning">Mixed</span>'
-    };
-
-    return badges[sentiment] || '<span class="badge bg-secondary">N/A</span>';
 }
 </script>
 {% endblock %}
-
-
-
-
-
-

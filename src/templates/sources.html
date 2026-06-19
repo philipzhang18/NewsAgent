@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}新闻源管理 - News Agent{% endblock %}
-{% block page_title %}Sources{% endblock %}
+{% block page_title %}<span data-i18n="page_sources">Sources</span>{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -9,7 +9,7 @@
         <div class="col-12">
             <h1 class="h3 mb-4">
                 <i class="fas fa-rss text-primary me-2"></i>
-                新闻源管理
+                <span data-i18n="page_sources">Sources</span>
             </h1>
         </div>
     </div>
@@ -207,7 +207,8 @@ async function loadSources() {
 
         if (data.success) {
             const sources = data.data;
-            updateSourcesStats(sources);
+            const dbTotal = data.total_articles || 0;
+            updateSourcesStats(sources, dbTotal);
             displaySources(sources);
         } else {
             showError('加载新闻源失败: ' + data.error);
@@ -218,15 +219,15 @@ async function loadSources() {
     }
 }
 
-function updateSourcesStats(sources) {
+function updateSourcesStats(sources, dbTotal) {
     const totalSources = sources.length;
     const activeSources = sources.filter(s => s.status === 'active').length;
     const rssSources = sources.filter(s => s.type === 'RSS').length;
     const apiSources = sources.filter(s => s.type === 'API').length;
     const socialSources = sources.filter(s => s.type === 'Social').length;
 
-    // Calculate total articles from all sources
-    const totalArticles = sources.reduce((sum, s) => sum + (s.articles_count || 0), 0);
+    // Use real database total instead of summing source counts
+    const totalArticles = dbTotal || sources.reduce((sum, s) => sum + (s.articles_count || 0), 0);
 
     document.getElementById('totalSources').textContent = totalSources;
     document.getElementById('activeSources').textContent = activeSources;

@@ -19,7 +19,6 @@ def test_article():
         title="Test Article",
         content="Test content",
         summary="Test summary",
-        source="Test Source",
         source_name="Test",
         url="https://example.com/test",
         published_at=datetime.now(timezone.utc),

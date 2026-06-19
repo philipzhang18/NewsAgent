@@ -16,7 +16,7 @@ def twitter_source():
     return NewsSource(
         name="Test Twitter",
         url="https://twitter.com",
-        source_type=SourceType.SOCIAL,
+        source_type=SourceType.SOCIAL_MEDIA,
         search_queries=["test query"],
         max_articles=10
     )

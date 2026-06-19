@@ -341,20 +341,20 @@ class RedditCollector(BaseCollector):
             logger.error(f"Error getting trending topics: {str(e)}")
             return []
 
-    def get_collector_stats(self) -> Dict[str, Any]:
-        """Get collector statistics."""
-        stats = super().get_collector_stats()
+    def get_status(self) -> Dict[str, Any]:
+        """Get collector status."""
+        status = super().get_status()
 
         if self.reddit:
-            stats.update({
+            status.update({
                 "api_available": True,
                 "read_only": self.reddit.read_only,
                 "default_subreddits": len(self.default_subreddits)
             })
         else:
-            stats.update({
+            status.update({
                 "api_available": False,
                 "error": "Reddit client not initialized"
             })
 
-        return stats
+        return status

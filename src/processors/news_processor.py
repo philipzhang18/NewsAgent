@@ -22,7 +22,10 @@ class NewsProcessor:
 
     def __init__(self):
         if OPENAI_AVAILABLE and settings.OPENAI_API_KEY:
-            self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            client_kwargs = {"api_key": settings.OPENAI_API_KEY}
+            if settings.OPENAI_BASE_URL:
+                client_kwargs["base_url"] = settings.OPENAI_BASE_URL
+            self.openai_client = AsyncOpenAI(**client_kwargs)
         else:
             self.openai_client = None
             if not OPENAI_AVAILABLE:

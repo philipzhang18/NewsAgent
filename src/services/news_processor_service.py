@@ -15,7 +15,6 @@ import time
 from ..models.news_models import NewsArticle, NewsCollection
 from ..processors.news_processor import NewsProcessor
 from ..services.storage_service import storage_service
-from ..services.cache_service import cache_service
 from ..config.settings import settings
 
 logger = logging.getLogger(__name__)

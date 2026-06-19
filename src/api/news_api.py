@@ -5,12 +5,13 @@ import requests
 import asyncio
 from werkzeug.exceptions import BadRequest
 
-from ..services.news_collector_service import NewsCollectorService
+from ..services.data_collection_service import data_collection_service
 from ..processors.news_processor import NewsProcessor
 from ..models.news_models import NewsArticle, SourceType
 from ..config.settings import settings
-from ..services.sqlite_storage_service import sqlite_storage
-from ..services.data_collection_service import data_collection_service
+from ..services.storage_service import storage_service, sqlite_storage
+from ..utils.async_helpers import run_async
+from ..middleware.api_security import require_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -46,24 +47,12 @@ def analyze_sentiment(text: str) -> str:
 news_api = Blueprint('news_api', __name__)
 
 # Initialize services
-collector_service = NewsCollectorService()
 processor = NewsProcessor()
 
 # Initialize SQLite storage
 if not sqlite_storage.is_connected():
-    sqlite_storage.connect()
+    storage_service.connect()
     logger.info("SQLite storage initialized")
-
-def run_async(coro):
-	"""Helper to run async functions in sync Flask context."""
-	# Create a new event loop for this execution
-	loop = asyncio.new_event_loop()
-	asyncio.set_event_loop(loop)
-	try:
-		return loop.run_until_complete(coro)
-	finally:
-		# Keep the loop set for potential reuse in the same thread
-		pass
 
 def validate_limit_parameter(limit: int, min_val: int = 1, max_val: int = 10000) -> int:
 	"""
@@ -113,7 +102,7 @@ def get_status():
 		from datetime import datetime
 
 		# Get real status from collector service
-		status = run_async(collector_service.get_collection_status())
+		status = run_async(data_collection_service.get_collection_status())
 
 		# Get articles from database to determine actual status
 		try:
@@ -133,10 +122,9 @@ def get_status():
 							pass
 			all_articles = [ArticleObj(a) for a in db_articles]
 		except Exception as e:
-			logger.warning(f"Failed to read from database: {e}, falling back to collector service")
-			# Fallback to collector service
-			all_articles = run_async(collector_service.get_recent_articles(limit=1000))
-			total_articles = len(all_articles)
+			logger.warning(f"Failed to read from database: {e}")
+			all_articles = []
+			total_articles = 0
 
 		# Count source distribution from articles
 		source_distribution = {}
@@ -348,7 +336,7 @@ def get_articles():
 				# Fall through to other sources
 
 		# Try to get articles from collector service
-		collected_articles = run_async(collector_service.get_recent_articles(limit=limit))
+		collected_articles = run_async(sqlite_storage.get_articles(limit=limit))
 
 		def _map_collected_article(article) -> Dict[str, Any]:
 			"""Map collected article to frontend schema."""
@@ -388,7 +376,7 @@ def get_articles():
 					"count": len(mapped),
 					"limit": limit,
 					"ai_filtered": ai_only,
-					"source": "collector_service"
+					"source": "sqlite"
 				}
 			})
 
@@ -433,64 +421,25 @@ def get_articles():
 					}
 				})
 			except Exception as api_error:
-				logger.warning(f"NewsAPI request failed, falling back to mock data: {str(api_error)}")
-				# Fall through to mock data
-
-		# 未配置 NEWS_API_KEY 或 API 请求失败时返回示例数据
-		mock_articles = [
-			{
-				"id": "1",
-				"title": "OpenAI Releases GPT-5: The Next Generation of AI",
-				"summary": "OpenAI has announced the release of GPT-5, featuring breakthrough capabilities in reasoning and multimodal understanding.",
-				"content": "OpenAI has officially launched GPT-5, marking a significant milestone in artificial intelligence...",
-				"source": "Tech News",
-				"source_name": "Tech News",
-				"url": "https://example.com/gpt5",
-				"published_at": "2025-10-10T10:00:00Z",
-				"sentiment": "positive",
-				"bias_score": None,
-				"category": "technology"
-			},
-			{
-				"id": "2",
-				"title": "Google's New AI Model Surpasses Human Performance",
-				"summary": "Google AI has developed a new machine learning model that achieves superhuman performance on complex reasoning tasks.",
-				"content": "In a groundbreaking achievement, Google AI has unveiled a new neural network architecture...",
-				"source": "AI Weekly",
-				"source_name": "AI Weekly",
-				"url": "https://example.com/google-ai",
-				"published_at": "2025-10-09T15:30:00Z",
-				"sentiment": "positive",
-				"bias_score": None,
-				"category": "technology"
-			},
-			{
-				"id": "3",
-				"title": "示例普通新闻标题",
-				"summary": "这是一个示例新闻摘要",
-				"content": "这是示例新闻的详细内容...",
-				"source": "示例新闻源",
-				"source_name": "示例新闻源",
-				"url": "https://example.com",
-				"published_at": "2025-10-08T08:00:00Z",
-				"sentiment": "neutral",
-				"bias_score": None,
-				"category": None
-			}
-		]
-
-		# Apply AI filter if requested
-		if ai_only:
-			mock_articles = [a for a in mock_articles if is_ai_related(a)]
+				logger.warning(f"NewsAPI request failed: {str(api_error)}")
+				if settings.DEBUG:
+					pass  # fall through to empty response below
+				else:
+					return jsonify({
+						"success": False,
+						"error": f"NewsAPI request failed: {api_error}",
+						"improvement": "Check NEWS_API_KEY and network connectivity.",
+					}), 502
 
 		return jsonify({
 			"success": True,
 			"data": {
-				"articles": mock_articles,
-				"count": len(mock_articles),
+				"articles": [],
+				"count": 0,
 				"limit": limit,
 				"ai_filtered": ai_only,
-				"source": "mock"
+				"source": "empty",
+				"message": "No articles in database. Run POST /api/news/collect-all to collect.",
 			}
 		})
 	except BadRequest as e:
@@ -503,53 +452,57 @@ def get_articles():
 
 @news_api.route('/articles/<article_id>', methods=['GET'])
 def get_article(article_id: str):
-	"""Return single article; here we just echo back id with minimal fields (demo)."""
 	try:
-		mock_article = {
-			"id": article_id,
-			"title": f"文章 {article_id} 的标题",
-			"summary": "",
-			"content": "",
-			"source": "NewsAPI" if settings.NEWS_API_KEY else "示例",
-			"url": "",
-			"published_at": None,
-			"sentiment": None,
-			"bias_score": None,
-			"category": None
-		}
-		return jsonify({"success": True, "data": mock_article})
+		row = run_async(sqlite_storage.get_article(article_id))
+		if not row:
+			return jsonify({"success": False, "error": "Article not found"}), 404
+		return jsonify({"success": True, "data": row})
 	except Exception as e:
 		logger.error(f"Error getting article {article_id}: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
 
 @news_api.route('/collect', methods=['POST'])
+@require_rate_limit
 def trigger_collection():
-	"""Collect AI news from the past 7 days (English and Chinese only)."""
+	"""Collect AI news from all configured sources. Accepts optional 'days' param (7 or 30)."""
 	try:
 		from datetime import datetime, timedelta
 
-		logger.info("7-day AI news collection triggered")
+		# Get days parameter (default 7)
+		days = request.json.get('days', 7) if request.is_json else int(request.args.get('days', 7))
+		days = min(max(days, 1), 30)  # Clamp between 1 and 30
+
+		logger.info(f"AI news collection triggered for past {days} days")
 
 		to_date = datetime.now()
-		from_date = to_date - timedelta(days=7)
+		from_date = to_date - timedelta(days=days)
 
 		collected_articles = []
 		collection_results = {}
 
-		# Collect AI news from NewsAPI (English and Chinese)
+		# Step 1: Collect from all sources via data_collection_service
+		result = run_async(data_collection_service.collect_all(save_to_db=False))
+		all_source_articles = []
+
+		# Gather articles from the parallel collection
+		if result.get("success"):
+			# The service already collected from RSS, NewsAPI, Reddit, Guardian, NYTimes
+			# We need the actual articles - re-collect with AI filter
+			pass
+
+		# Step 2: Collect AI news from NewsAPI with AI-specific query
 		if settings.NEWS_API_KEY:
 			try:
-				# Define AI-related search query
 				ai_query = '(AI OR "artificial intelligence" OR "machine learning" OR "deep learning" OR ' \
 						   '"neural network" OR GPT OR ChatGPT OR LLM OR "large language model" OR ' \
 						   '"generative AI" OR transformer OR OpenAI OR "Google AI" OR Anthropic OR ' \
 						   'Claude OR Gemini OR Copilot OR "computer vision" OR NLP OR ' \
 						   '"natural language processing" OR "reinforcement learning")'
 
-				languages = ['en', 'zh']  # English and Chinese only
+				languages = ['en', 'zh']
 
 				for lang in languages:
-					logger.info(f"Collecting AI news in {lang}...")
+					logger.info(f"Collecting AI news in {lang} for past {days} days...")
 					params = {
 						'apiKey': settings.NEWS_API_KEY,
 						'q': ai_query,
@@ -570,12 +523,9 @@ def trigger_collection():
 						lang_count = 0
 
 						for article_data in articles:
-							# Double-check if article is AI-related
 							title = article_data.get('title') or ''
 							description = article_data.get('description') or ''
-							text_to_check = (title + ' ' + description).lower()
 
-							# Filter for AI-related content
 							if not is_ai_related({'title': title, 'summary': description, 'content': ''}):
 								continue
 
@@ -601,15 +551,87 @@ def trigger_collection():
 				logger.error(f"Error collecting from NewsAPI: {str(e)}")
 				collection_results['NewsAPI'] = 0
 
+		# Step 3: Collect from Guardian API with AI query
+		if settings.GUARDIAN_API_KEY and settings.GUARDIAN_API_KEY != "your_guardian_api_key_here":
+			try:
+				from ..collectors.guardian_collector import GuardianCollector
+				from ..models.news_models import NewsSource
+				source = NewsSource(
+					name="The Guardian API",
+					source_type=SourceType.API,
+					url="https://content.guardianapis.com",
+					max_articles=50
+				)
+				source.query = "artificial intelligence OR machine learning OR AI"
+				collector = GuardianCollector(source)
+				if run_async(collector.validate_source()):
+					guardian_articles = run_async(collector.collect_news())
+					ai_guardian = [a for a in guardian_articles if is_ai_related({'title': a.title, 'summary': a.summary or '', 'content': a.content})]
+					collected_articles.extend(ai_guardian)
+					collection_results['Guardian'] = len(ai_guardian)
+					logger.info(f"Collected {len(ai_guardian)} AI articles from Guardian")
+			except Exception as e:
+				logger.error(f"Error collecting from Guardian: {str(e)}")
+				collection_results['Guardian'] = 0
+
+		# Step 4: Collect from NYTimes API with AI query
+		if settings.NYTIMES_API_KEY and settings.NYTIMES_API_KEY != "your_nytimes_api_key_here":
+			try:
+				from ..collectors.nytimes_collector import NYTimesCollector
+				from ..models.news_models import NewsSource
+				source = NewsSource(
+					name="NYTimes API",
+					source_type=SourceType.API,
+					url="https://api.nytimes.com",
+					max_articles=50
+				)
+				source.query = "artificial intelligence"
+				collector = NYTimesCollector(source)
+				if run_async(collector.validate_source()):
+					nyt_articles = run_async(collector.collect_news())
+					ai_nyt = [a for a in nyt_articles if is_ai_related({'title': a.title, 'summary': a.summary or '', 'content': a.content})]
+					collected_articles.extend(ai_nyt)
+					collection_results['NYTimes'] = len(ai_nyt)
+					logger.info(f"Collected {len(ai_nyt)} AI articles from NYTimes")
+			except Exception as e:
+				logger.error(f"Error collecting from NYTimes: {str(e)}")
+				collection_results['NYTimes'] = 0
+
+		# Step 5: Collect from RSS feeds and filter for AI
+		try:
+			rss_articles = run_async(data_collection_service.collect_from_rss())
+			ai_rss = [a for a in rss_articles if is_ai_related({'title': a.title, 'summary': a.summary or '', 'content': a.content})]
+			collected_articles.extend(ai_rss)
+			collection_results['RSS'] = len(ai_rss)
+			logger.info(f"Collected {len(ai_rss)} AI articles from RSS feeds")
+		except Exception as e:
+			logger.error(f"Error collecting from RSS: {str(e)}")
+			collection_results['RSS'] = 0
+
+		# Step 6: Collect from Reddit and filter for AI
+		try:
+			reddit_articles = run_async(data_collection_service.collect_from_reddit())
+			ai_reddit = [a for a in reddit_articles if is_ai_related({'title': a.title, 'summary': a.summary or '', 'content': a.content})]
+			collected_articles.extend(ai_reddit)
+			collection_results['Reddit'] = len(ai_reddit)
+			logger.info(f"Collected {len(ai_reddit)} AI articles from Reddit")
+		except Exception as e:
+			logger.error(f"Error collecting from Reddit: {str(e)}")
+			collection_results['Reddit'] = 0
+
+		# Filter by date range
+		collected_articles = [
+			a for a in collected_articles
+			if not a.published_at or a.published_at.replace(tzinfo=None) >= from_date
+		]
+
 		# Save all articles to database
 		saved_count = 0
 		failed_count = 0
 
 		for article in collected_articles:
 			try:
-				# Process article for sentiment analysis
 				processed = run_async(processor.process_article(article))
-				# Save to SQLite
 				saved = run_async(sqlite_storage.save_article(processed))
 				if saved:
 					saved_count += 1
@@ -619,21 +641,21 @@ def trigger_collection():
 				logger.error(f"Error saving article: {str(e)}")
 				failed_count += 1
 
-		logger.info(f"7-day AI news collection complete: {saved_count} saved, {failed_count} failed")
+		logger.info(f"AI news collection complete ({days} days): {saved_count} saved, {failed_count} failed")
 
 		return jsonify({
 			"success": True,
-			"message": f"Successfully collected {saved_count} AI news articles from the past 7 days (English & Chinese)",
+			"message": f"Successfully collected {saved_count} AI news articles from the past {days} days",
 			"data": {
 				"date_range": {
 					"from": from_date.isoformat(),
 					"to": to_date.isoformat()
 				},
+				"days": days,
 				"total_collected": len(collected_articles),
 				"saved_to_db": saved_count,
 				"failed": failed_count,
 				"sources": collection_results,
-				"languages": ["en", "zh"],
 				"ai_filtered": True
 			}
 		})
@@ -655,10 +677,43 @@ def get_collection_status():
 		logger.error(f"Error getting collection status: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
 
+@news_api.route('/collect-all', methods=['POST'])
+@require_rate_limit
+def trigger_collect_all():
+	"""Collect from all configured sources (RSS, NewsAPI, Reddit, Guardian, NYTimes)."""
+	try:
+		result = run_async(data_collection_service.collect_all(save_to_db=True))
+		return jsonify({"success": True, "data": result})
+	except Exception as e:
+		logger.error(f"collect-all failed: {e}")
+		return jsonify({"success": False, "error": str(e)}), 500
+
+@news_api.route('/diagnostics', methods=['GET'])
+def source_diagnostics():
+	"""Run live connectivity tests for all sources."""
+	try:
+		results = run_async(data_collection_service.run_diagnostics())
+		return jsonify({"success": True, "data": results})
+	except Exception as e:
+		return jsonify({"success": False, "error": str(e)}), 500
+
 @news_api.route('/process', methods=['POST'])
+@require_rate_limit
 def trigger_processing():
 	try:
-		return jsonify({"success": True, "message": "Article processing triggered successfully"})
+		limit = int(request.json.get('limit', 50) if request.is_json else 50)
+		articles = run_async(sqlite_storage.get_articles(limit=limit))
+		processed = 0
+		for row in articles:
+			article = NewsArticle.from_dict(row)
+			p = run_async(processor.process_article(article))
+			if run_async(sqlite_storage.save_article(p)):
+				processed += 1
+		return jsonify({
+			"success": True,
+			"message": f"Processed {processed} articles",
+			"processed_count": processed,
+		})
 	except Exception as e:
 		logger.error(f"Error triggering processing: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
@@ -683,7 +738,7 @@ def get_sources():
 
 		# If no database articles, try collector service
 		if not db_articles:
-			all_articles = run_async(collector_service.get_recent_articles(limit=1000))
+			all_articles = run_async(sqlite_storage.get_articles(limit=1000))
 		else:
 			all_articles = db_articles
 
@@ -784,9 +839,9 @@ def get_sources():
 						matched = True
 					elif "reddit" in source.name.lower() and "reddit" in collector_name.lower():
 						matched = True
-					elif "twitter" in source.name.lower() and "twitter" in collector_name.lower():
+					elif "guardian" in source.name.lower() and "guardian" in collector_name.lower():
 						matched = True
-					elif "exa" in source.name.lower() and "exa" in collector_name.lower():
+					elif "nytimes" in source.name.lower() and "nytimes" in collector_name.lower():
 						matched = True
 
 					if matched:
@@ -798,11 +853,10 @@ def get_sources():
 						logger.debug(f"API/Social source '{source.name}' matched by collector '{collector_name}': {count} articles")
 						break
 
-				# Special case: Exa AI Search might be stored with collector="RSS"
 				# Try matching by source_name if not matched by collector
-				if not matched_by_collector and "exa" in source.name.lower():
+				if not matched_by_collector:
 					for (src_name, collector_name), count in source_collector_counts.items():
-						if "exa" in src_name.lower():
+						if source.name.lower() in src_name.lower():
 							article_count += count
 							if pub_date := source_last_updated.get(src_name):
 								if not last_updated or pub_date > last_updated:
@@ -821,52 +875,19 @@ def get_sources():
 				"description": f"{source.name} - {source_type} news source"
 			})
 
-		# If no configured sources, return default mock data
+		# Return empty list if no sources configured
 		if not sources:
-			sources = [
-				{
-					"id": "newsapi",
-					"name": "NewsAPI",
-					"type": "API",
-					"url": "https://newsapi.org",
-					"status": "active",
-					"last_updated": now.isoformat() + 'Z',
-					"articles_count": 0,
-					"description": "Global news aggregation API service"
-				},
-				{
-					"id": "rss_tech",
-					"name": "Tech RSS Feeds",
-					"type": "RSS",
-					"url": "https://feeds.feedburner.com/TechCrunch",
-					"status": "active",
-					"last_updated": now.isoformat() + 'Z',
-					"articles_count": 0,
-					"description": "Technology news RSS feed"
-				},
-				{
-					"id": "twitter_x",
-					"name": "Twitter/X",
-					"type": "Social",
-					"url": "https://twitter.com",
-					"status": "active",
-					"last_updated": now.isoformat() + 'Z',
-					"articles_count": 0,
-					"description": "Twitter/X social media platform"
-				},
-				{
-					"id": "reddit_news",
-					"name": "Reddit News",
-					"type": "Social",
-					"url": "https://www.reddit.com/r/news",
-					"status": "active",
-					"last_updated": now.isoformat() + 'Z',
-					"articles_count": 0,
-					"description": "Reddit news aggregation"
-				}
-			]
+			sources = []
 
-		return jsonify({"success": True, "data": sources})
+		# Get real total from database for accurate count
+		db_total = 0
+		try:
+			db_stats = run_async(sqlite_storage.get_statistics())
+			db_total = db_stats.get('total_articles', 0) if db_stats else 0
+		except Exception:
+			db_total = len(all_articles)
+
+		return jsonify({"success": True, "data": sources, "total_articles": db_total})
 	except Exception as e:
 		logger.error(f"Error getting sources: {str(e)}")
 		return jsonify({"success": False, "error": str(e)}), 500
@@ -962,6 +983,7 @@ def update_source(source_id: str):
 def create_source():
 	"""Create a new news source."""
 	try:
+		from datetime import datetime
 		data = request.get_json()
 		if not data:
 			return jsonify({"success": False, "error": "No data provided"}), 400
@@ -973,28 +995,34 @@ def create_source():
 				return jsonify({"success": False, "error": f"Missing required field: {field}"}), 400
 
 		# 生成新的源ID
-		import uuid
-		source_id = str(uuid.uuid4())[:8]
+		source_id = data.get("name").lower().replace(' ', '_').replace('/', '_')
 
-		# 模拟创建源
-		logger.info(f"Creating new source with data: {data}")
+		new_source = data_collection_service.add_source(
+			name=data.get("name"),
+			source_type_label=data.get("type"),
+			url=data.get("url"),
+			max_articles=int(data.get("max_articles", 50)),
+		)
+		if not new_source:
+			return jsonify({"success": False, "error": "Source already exists or invalid data"}), 400
 
-		# 返回新创建的源数据
-		new_source = {
+		logger.info(f"Created source: {new_source.name}")
+
+		new_source_data = {
 			"id": source_id,
-			"name": data.get("name"),
+			"name": new_source.name,
 			"type": data.get("type"),
-			"url": data.get("url"),
+			"url": new_source.url,
 			"status": "active",
 			"description": data.get("description", ""),
-			"last_updated": "2025-09-23T10:20:00Z",
+			"last_updated": datetime.utcnow().isoformat() + 'Z',
 			"articles_count": 0
 		}
 
 		return jsonify({
 			"success": True,
 			"message": "Source created successfully",
-			"data": new_source
+			"data": new_source_data
 		}), 201
 	except Exception as e:
 		logger.error(f"Error creating source: {str(e)}")
@@ -1004,12 +1032,12 @@ def create_source():
 def delete_source(source_id: str):
 	"""Delete a news source."""
 	try:
-		# 模拟删除源
-		logger.info(f"Deleting source: {source_id}")
+		if not data_collection_service.delete_source(source_id):
+			return jsonify({"success": False, "error": "Source not found"}), 404
 
 		return jsonify({
 			"success": True,
-			"message": "Source deleted successfully"
+			"message": "Source deleted or deactivated successfully"
 		})
 	except Exception as e:
 		logger.error(f"Error deleting source {source_id}: {str(e)}")
@@ -1019,58 +1047,20 @@ def delete_source(source_id: str):
 def test_source(source_id: str):
 	"""Test a news source connection and functionality."""
 	try:
-		# Get source information from dynamic sources
-		source_response = get_source(source_id)
-		source_data = source_response.get_json()
-
-		if not source_data.get('success'):
-			return jsonify({"success": False, "error": "Source not found"}), 404
-
-		source = source_data.get('data')
-
-		# Simulate testing different types of sources
-		if source["type"] == "API":
-			test_result = {
-				"success": True,
-				"message": f"API connection test successful for {source['name']}",
-				"details": {
-					"response_time": "245ms",
-					"status_code": 200,
-					"available_articles": source.get('articles_count', 0),
-					"rate_limit_remaining": 450
-				}
-			}
-		elif source["type"] == "RSS":
-			test_result = {
-				"success": True,
-				"message": f"RSS feed test successful for {source['name']}",
-				"details": {
-					"response_time": "312ms",
-					"feed_valid": True,
-					"articles_found": source.get('articles_count', 0),
-					"last_updated": source.get('last_updated', '')
-				}
-			}
-		elif source["type"] == "Social":
-			test_result = {
-				"success": True,
-				"message": f"Social media API test successful for {source['name']}",
-				"details": {
-					"response_time": "189ms",
-					"api_status": "operational",
-					"content_accessible": True,
-					"rate_limit_remaining": 100
-				}
-			}
-		else:
-			test_result = {
+		test_result = run_async(data_collection_service.test_source_connection(source_id))
+		if not test_result.get("success"):
+			return jsonify({
 				"success": False,
-				"message": f"Unknown source type: {source['type']}",
-				"details": {}
-			}
+				"message": test_result.get("message") or test_result.get("error", "Test failed"),
+				"details": test_result.get("details", {}),
+				"improvement": test_result.get("improvement", ""),
+			}), 400
 
-		logger.info(f"Testing source {source_id}: {test_result}")
-		return jsonify(test_result)
+		return jsonify({
+			"success": True,
+			"message": test_result.get("message", "Test successful"),
+			"details": test_result.get("details", {}),
+		})
 
 	except Exception as e:
 		logger.error(f"Error testing source {source_id}: {str(e)}")
@@ -1087,7 +1077,7 @@ def get_stats():
 		from datetime import datetime, timedelta
 
 		# Get real status from collector service
-		status = run_async(collector_service.get_collection_status())
+		status = run_async(data_collection_service.get_collection_status())
 
 		# Get statistics efficiently from database using SQL aggregation
 		try:
@@ -1190,36 +1180,28 @@ def get_stats():
 
 @news_api.route('/ai-stats', methods=['GET'])
 def get_ai_stats():
-	"""Get detailed AI news statistics."""
+	"""Get detailed AI news statistics from database."""
 	try:
-		# Mock AI news statistics
+		db_articles = run_async(sqlite_storage.get_articles(limit=5000))
+		ai_rows = [a for a in db_articles if is_ai_related(a)]
+		recent = sorted(
+			ai_rows,
+			key=lambda x: x.get('published_at') or x.get('collected_at') or '',
+			reverse=True,
+		)[:10]
 		ai_stats = {
-			"total_ai_articles": 8,
+			"total_ai_articles": len(ai_rows),
 			"recent_ai_articles": [
 				{
-					"id": "ai-1",
-					"title": "OpenAI Releases GPT-5: The Next Generation of AI",
-					"summary": "OpenAI has announced GPT-5 with breakthrough capabilities",
-					"published_at": "2025-10-10T10:00:00Z",
-					"source": "Tech News"
-				},
-				{
-					"id": "ai-2",
-					"title": "Google's New AI Model Surpasses Human Performance",
-					"summary": "Google AI develops superhuman reasoning model",
-					"published_at": "2025-10-09T15:30:00Z",
-					"source": "AI Weekly"
+					"id": a.get("id"),
+					"title": a.get("title"),
+					"summary": a.get("summary"),
+					"published_at": a.get("published_at"),
+					"source": a.get("source_name"),
 				}
+				for a in recent
 			],
-			"ai_topics": {
-				"Large Language Models": 3,
-				"Computer Vision": 2,
-				"Robotics": 1,
-				"Neural Networks": 2
-			},
-			"trending_ai_keywords": [
-				"GPT", "Machine Learning", "Neural Network", "OpenAI", "Google AI"
-			]
+			"message": "Run POST /api/news/collect-all if empty",
 		}
 		return jsonify({"success": True, "data": ai_stats})
 	except Exception as e:
@@ -1227,6 +1209,7 @@ def get_ai_stats():
 		return jsonify({"success": False, "error": str(e)}), 500
 
 @news_api.route('/reprocess', methods=['POST'])
+@require_rate_limit
 def reprocess_articles():
 	"""Reprocess articles without sentiment analysis using TextBlob fallback."""
 	try:
@@ -1434,9 +1417,9 @@ def collect_7days_news():
 
 @news_api.route('/collect-all-sources', methods=['POST'])
 def collect_all_sources():
-	"""Collect news from ALL configured sources (RSS, NewsAPI, Twitter, Reddit, Exa AI)."""
+	"""Collect news from ALL configured sources (RSS, NewsAPI, Reddit, Guardian, NYTimes)."""
 	try:
-		logger.info("Starting collection from all sources (RSS, NewsAPI, Twitter, Reddit, Exa)...")
+		logger.info("Starting collection from all sources...")
 
 		# Use data_collection_service to collect from all sources
 		result = run_async(data_collection_service.collect_all(save_to_db=True))
@@ -1451,9 +1434,9 @@ def collect_all_sources():
 					"total_collected": result.get("total_collected", 0),
 					"rss_articles": result.get("rss_articles", 0),
 					"newsapi_articles": result.get("newsapi_articles", 0),
-					"twitter_articles": result.get("twitter_articles", 0),
 					"reddit_articles": result.get("reddit_articles", 0),
-					"exa_articles": result.get("exa_articles", 0),
+					"guardian_articles": result.get("guardian_articles", 0),
+					"nytimes_articles": result.get("nytimes_articles", 0),
 					"saved_to_db": result.get("saved_to_db", 0),
 					"duration_seconds": result.get("duration_seconds", 0),
 					"timestamp": result.get("timestamp")
@@ -1487,15 +1470,6 @@ def get_api_config_status():
 			"configured": bool(settings.NEWS_API_KEY)
 		})
 
-		# Check Twitter/X
-		api_status.append({
-			"name": "Twitter/X",
-			"icon": "twitter",  # Updated Twitter/X icon
-			"icon_type": "fab",  # Font Awesome Brand
-			"color": "info",
-			"configured": bool(settings.TWITTER_BEARER_TOKEN)
-		})
-
 		# Check Reddit
 		api_status.append({
 			"name": "Reddit",
@@ -1507,18 +1481,27 @@ def get_api_config_status():
 
 		# Check Exa AI
 		api_status.append({
-			"name": "Exa AI",
-			"icon": "search",
-			"icon_type": "fas",  # Font Awesome Solid
-			"color": "success",
-			"configured": bool(getattr(settings, 'EXA_API_KEY', None))
+			"name": "The Guardian",
+			"icon": "shield-alt",
+			"icon_type": "fas",
+			"color": "dark",
+			"configured": bool(settings.GUARDIAN_API_KEY and settings.GUARDIAN_API_KEY != "your_guardian_api_key_here")
 		})
 
-		# Check OpenAI
+		# Check NYTimes
 		api_status.append({
-			"name": "OpenAI",
+			"name": "NYTimes",
+			"icon": "landmark",
+			"icon_type": "fas",
+			"color": "secondary",
+			"configured": bool(settings.NYTIMES_API_KEY and settings.NYTIMES_API_KEY != "your_nytimes_api_key_here")
+		})
+
+		# Check AI/LLM (OpenAI-compatible)
+		api_status.append({
+			"name": f"AI ({settings.OPENAI_MODEL})",
 			"icon": "robot",
-			"icon_type": "fas",  # Font Awesome Solid
+			"icon_type": "fas",
 			"color": "danger",
 			"configured": bool(settings.OPENAI_API_KEY)
 		})
@@ -1537,6 +1520,7 @@ def get_api_config_status():
 
 
 @news_api.route('/ai-summary', methods=['POST'])
+@require_rate_limit
 def generate_ai_summary():
 	"""Generate comprehensive AI news analysis summary."""
 	try:
@@ -1584,7 +1568,7 @@ def generate_ai_summary():
 
 		# If no AI articles from database, try collector service
 		if not ai_articles:
-			all_articles = run_async(collector_service.get_recent_articles(limit=100))
+			all_articles = run_async(sqlite_storage.get_articles(limit=100))
 
 			def _map_collected_article(article) -> Dict[str, Any]:
 				"""Map collected article to frontend schema."""
@@ -1607,7 +1591,7 @@ def generate_ai_summary():
 			# Filter AI-related articles
 			ai_articles = [a for a in mapped_articles if is_ai_related(a)]
 
-		# If no collected articles, try NewsAPI or use mock data
+		# If no collected articles, try NewsAPI live fetch
 		if not ai_articles:
 			if settings.NEWS_API_KEY:
 				try:
@@ -1618,109 +1602,15 @@ def generate_ai_summary():
 						"sortBy": "publishedAt",
 						"pageSize": 50
 					}
-					endpoint = "https://newsapi.org/v2/everything"
-					resp = requests.get(endpoint, params=params, timeout=10)
+					resp = requests.get("https://newsapi.org/v2/everything", params=params, timeout=10)
 					resp.raise_for_status()
 					data = resp.json()
-					articles = data.get("articles", [])
-					ai_articles = [_map_newsapi_article(a) for a in articles]
+					ai_articles = [_map_newsapi_article(a) for a in data.get("articles", [])]
 				except Exception as e:
 					logger.warning(f"Failed to fetch from NewsAPI: {str(e)}")
-					# Use mock data
-					ai_articles = [
-						{
-							"id": "1",
-							"title": "OpenAI Releases GPT-5: The Next Generation of AI",
-							"summary": "OpenAI has announced GPT-5 with breakthrough capabilities in reasoning and multimodal understanding.",
-							"content": "OpenAI has officially launched GPT-5...",
-							"source": "Tech News",
-							"source_name": "Tech News",
-							"url": "https://example.com/gpt5",
-							"published_at": "2025-10-10T10:00:00Z",
-							"sentiment": "positive"
-						},
-						{
-							"id": "2",
-							"title": "Google's New AI Model Surpasses Human Performance",
-							"summary": "Google AI has developed a new machine learning model that achieves superhuman performance.",
-							"content": "In a groundbreaking achievement, Google AI has unveiled...",
-							"source": "AI Weekly",
-							"source_name": "AI Weekly",
-							"url": "https://example.com/google-ai",
-							"published_at": "2025-10-09T15:30:00Z",
-							"sentiment": "positive"
-						},
-						{
-							"id": "3",
-							"title": "AI Safety Concerns Raised by Researchers",
-							"summary": "Leading AI researchers express concerns about rapid AI development.",
-							"content": "A group of prominent AI researchers has published...",
-							"source": "Science Daily",
-							"source_name": "Science Daily",
-							"url": "https://example.com/ai-safety",
-							"published_at": "2025-10-08T14:20:00Z",
-							"sentiment": "negative"
-						},
-						{
-							"id": "4",
-							"title": "New Neural Network Architecture Shows Promise",
-							"summary": "Researchers develop efficient neural network design.",
-							"content": "A new neural network architecture has been proposed...",
-							"source": "Tech Review",
-							"source_name": "Tech Review",
-							"url": "https://example.com/neural-net",
-							"published_at": "2025-10-07T09:30:00Z",
-							"sentiment": "neutral"
-						}
-					]
+					ai_articles = []
 			else:
-				# Use mock data
-				ai_articles = [
-					{
-						"id": "1",
-						"title": "OpenAI Releases GPT-5: The Next Generation of AI",
-						"summary": "OpenAI has announced GPT-5 with breakthrough capabilities in reasoning and multimodal understanding.",
-						"content": "OpenAI has officially launched GPT-5...",
-						"source": "Tech News",
-						"source_name": "Tech News",
-						"url": "https://example.com/gpt5",
-						"published_at": "2025-10-10T10:00:00Z",
-						"sentiment": "positive"
-					},
-					{
-						"id": "2",
-						"title": "Google's New AI Model Surpasses Human Performance",
-						"summary": "Google AI has developed a new machine learning model that achieves superhuman performance.",
-						"content": "In a groundbreaking achievement, Google AI has unveiled...",
-						"source": "AI Weekly",
-						"source_name": "AI Weekly",
-						"url": "https://example.com/google-ai",
-						"published_at": "2025-10-09T15:30:00Z",
-						"sentiment": "positive"
-					},
-					{
-						"id": "3",
-						"title": "AI Safety Concerns Raised by Researchers",
-						"summary": "Leading AI researchers express concerns about rapid AI development.",
-						"content": "A group of prominent AI researchers has published...",
-						"source": "Science Daily",
-						"source_name": "Science Daily",
-						"url": "https://example.com/ai-safety",
-						"published_at": "2025-10-08T14:20:00Z",
-						"sentiment": "negative"
-					},
-					{
-						"id": "4",
-						"title": "New Neural Network Architecture Shows Promise",
-						"summary": "Researchers develop efficient neural network design.",
-						"content": "A new neural network architecture has been proposed...",
-						"source": "Tech Review",
-						"source_name": "Tech Review",
-						"url": "https://example.com/neural-net",
-						"published_at": "2025-10-07T09:30:00Z",
-						"sentiment": "neutral"
-					}
-				]
+				ai_articles = []
 
 		# Analyze sentiment distribution
 		sentiment_summary = Counter()
@@ -1873,10 +1763,13 @@ def generate_ai_summary():
 
 ⚠️ 请确保最终输出达到900-1100中文字，内容充实、观点鲜明、分析深入。现在开始生成："""
 
-				# Call OpenAI API
+				# Call OpenAI-compatible API
 				try:
 					from openai import OpenAI
-					openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+					client_kwargs = {"api_key": settings.OPENAI_API_KEY}
+					if settings.OPENAI_BASE_URL:
+						client_kwargs["base_url"] = settings.OPENAI_BASE_URL
+					openai_client = OpenAI(**client_kwargs)
 
 					response = openai_client.chat.completions.create(
 						model=settings.OPENAI_MODEL or "gpt-4o-mini",

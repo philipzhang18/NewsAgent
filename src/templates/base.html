@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}News Agent{% endblock %}</title>
-
     <!-- Preconnect to external resources -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 
@@ -147,33 +146,34 @@
                     <div class="text-center mb-4">
                         <h4 class="text-white">
                             <i class="fas fa-newspaper"></i>
-                            News Agent
+                            <span data-i18n="app_name">News Agent</span>
                         </h4>
+                        <button type="button" class="btn btn-sm btn-outline-light mt-2" id="langSwitcher" data-i18n="lang_switch">中文</button>
                     </div>
                     
                     <ul class="nav flex-column">
                         <li class="nav-item">
                             <a class="nav-link" href="/">
                                 <i class="fas fa-home"></i>
-                                Dashboard
+                                <span data-i18n="nav_dashboard">Dashboard</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/articles">
                                 <i class="fas fa-newspaper"></i>
-                                Articles
+                                <span data-i18n="nav_articles">Articles</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/sources">
                                 <i class="fas fa-rss"></i>
-                                Sources
+                                <span data-i18n="nav_sources">Sources</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="#" onclick="showServiceControls()">
                                 <i class="fas fa-history"></i>
-                                Recent Activity
+                                <span data-i18n="nav_activity">Recent Activity</span>
                             </a>
                         </li>
                     </ul>
@@ -199,22 +199,22 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="fas fa-cog"></i> Service Control</h5>
+                    <h5 class="modal-title"><i class="fas fa-cog"></i> <span data-i18n="service_control">Service Control</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <!-- Control Buttons -->
                     <div class="mb-4">
-                        <h6 class="mb-3"><i class="fas fa-play-circle"></i> Service Controls</h6>
+                        <h6 class="mb-3"><i class="fas fa-play-circle"></i> <span data-i18n="service_controls">Service Controls</span></h6>
                         <div class="d-grid gap-2 d-md-flex justify-content-md-start">
                             <button class="btn btn-primary" onclick="initializeService()">
-                                <i class="fas fa-play"></i> Initialize
+                                <i class="fas fa-play"></i> <span data-i18n="initialize">Initialize</span>
                             </button>
                             <button class="btn btn-success" onclick="startService()">
-                                <i class="fas fa-play-circle"></i> Start
+                                <i class="fas fa-play-circle"></i> <span data-i18n="start">Start</span>
                             </button>
                             <button class="btn btn-warning" onclick="stopService()">
-                                <i class="fas fa-stop-circle"></i> Stop
+                                <i class="fas fa-stop-circle"></i> <span data-i18n="stop">Stop</span>
                             </button>
                         </div>
                     </div>
@@ -224,36 +224,38 @@
 
                     <!-- Recent Activity -->
                     <div class="mb-4">
-                        <h6 class="mb-3"><i class="fas fa-history"></i> Recent Activity</h6>
+                        <h6 class="mb-3"><i class="fas fa-history"></i> <span data-i18n="recent_activity">Recent Activity</span></h6>
                         <div id="serviceRecentActivity" class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
                             <div class="text-center text-muted">
                                 <div class="spinner-border spinner-border-sm" role="status"></div>
-                                <small class="ms-2">Loading activity...</small>
+                                <small class="ms-2" data-i18n="loading_activity">Loading activity...</small>
                             </div>
                         </div>
                     </div>
 
                     <!-- Service Logs -->
                     <div>
-                        <h6 class="mb-3"><i class="fas fa-file-alt"></i> Service Logs</h6>
+                        <h6 class="mb-3"><i class="fas fa-file-alt"></i> <span data-i18n="service_logs">Service Logs</span></h6>
                         <div id="serviceLogs" class="border rounded p-3 bg-dark text-light" style="max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
                             <div class="text-center text-muted">
                                 <div class="spinner-border spinner-border-sm" role="status"></div>
-                                <small class="ms-2">Loading logs...</small>
+                                <small class="ms-2" data-i18n="loading_logs">Loading logs...</small>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="refreshServiceInfo()">
-                        <i class="fas fa-sync-alt"></i> Refresh
+                        <i class="fas fa-sync-alt"></i> <span data-i18n="refresh">Refresh</span>
                     </button>
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal" data-i18n="close">Close</button>
                 </div>
             </div>
         </div>
     </div>
     
+    <!-- i18n -->
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
     <!-- Bootstrap JS (Local) - Defer loading -->
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}" defer></script>
     <!-- jQuery (Local) - Defer loading -->
@@ -318,9 +320,9 @@
                         activityHtml += `
                             <div class="list-group-item">
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <strong>Service Status:</strong>
+                                    <strong>${window.NewsAgentI18n ? NewsAgentI18n.t('service_status') : 'Service Status'}:</strong>
                                     <span class="badge ${status.service_running ? 'bg-success' : 'bg-secondary'}">
-                                        ${status.service_running ? 'Running' : 'Stopped'}
+                                        ${status.service_running ? (NewsAgentI18n ? NewsAgentI18n.t('running') : 'Running') : (NewsAgentI18n ? NewsAgentI18n.t('stopped') : 'Stopped')}
                                     </span>
                                 </div>
                             </div>
@@ -334,8 +336,12 @@
                                     : 'Never';
 
                                 const statusBadge = collector.is_running
-                                    ? '<span class="badge bg-success">Running</span>'
-                                    : '<span class="badge bg-secondary">Idle</span>';
+                                    ? '<span class="badge bg-success">' + (NewsAgentI18n ? NewsAgentI18n.t('running') : 'Running') + '</span>'
+                                    : '<span class="badge bg-secondary">' + (NewsAgentI18n ? NewsAgentI18n.t('idle') : 'Idle') + '</span>';
+
+                                const lastLabel = NewsAgentI18n ? NewsAgentI18n.t('last') : 'Last';
+                                const articlesLabel = NewsAgentI18n ? NewsAgentI18n.t('articles_label') : 'Articles';
+                                const neverLabel = NewsAgentI18n ? NewsAgentI18n.t('never') : 'Never';
 
                                 activityHtml += `
                                     <div class="list-group-item">
@@ -344,8 +350,8 @@
                                             ${statusBadge}
                                         </div>
                                         <small class="text-muted">
-                                            Last: ${lastCollection} |
-                                            Articles: ${collector.articles_collected || 0}
+                                            ${lastLabel}: ${lastCollection === 'Never' ? neverLabel : lastCollection} |
+                                            ${articlesLabel}: ${collector.articles_collected || 0}
                                         </small>
                                     </div>
                                 `;
@@ -428,7 +434,7 @@
                     const data = await response.json();
 
                     if (data.success) {
-                        showServiceStatus('Service initialized successfully!', 'success');
+                        showServiceStatus(NewsAgentI18n ? NewsAgentI18n.t('init_success') : 'Service initialized successfully!', 'success');
                         // Reload activity
                         await loadServiceInfo();
                     } else {
@@ -445,7 +451,7 @@
                     const data = await response.json();
 
                     if (data.success) {
-                        showServiceStatus('Service started successfully!', 'success');
+                        showServiceStatus(NewsAgentI18n ? NewsAgentI18n.t('start_success') : 'Service started successfully!', 'success');
                         // Reload activity
                         await loadServiceInfo();
                     } else {
@@ -462,7 +468,7 @@
                     const data = await response.json();
 
                     if (data.success) {
-                        showServiceStatus('Service stopped successfully!', 'success');
+                        showServiceStatus(NewsAgentI18n ? NewsAgentI18n.t('stop_success') : 'Service stopped successfully!', 'success');
                         // Reload activity
                         await loadServiceInfo();
                     } else {
